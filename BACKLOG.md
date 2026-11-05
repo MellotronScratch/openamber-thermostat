@@ -35,6 +35,8 @@ hergebruikt. Een afgerond item wordt doorgestreept en blijft staan.
   gelijk blijft). Met de ring aan: glitches op het scherm en de thermostaat valt van de WiFi; met de ring uit 15 minuten
   stabiel. Daarom staat `ledring_beschikbaar` op `"false"`. Later: alleen versturen bij een kleurwijziging en een trager
   interval, daarna weer beschikbaar maken. Waarschijnlijk ook de oorzaak van B01.
+  Let op: daarna viel de thermostaat ook met de ring uit nog een paar keer van de WiFi (niet bereikbaar voor OTA en ping).
+  De ring is dus waarschijnlijk niet de enige oorzaak; nog uitzoeken (bijvoorbeeld een log over langere tijd).
 
 ## Software-update
 

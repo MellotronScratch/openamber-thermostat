@@ -7,7 +7,7 @@
 #   0 = Temperatuur  climate_canvas    setpoint instellen met de knop
 #   1 = Menu         carrousel_canvas  carrousel met loop (7 items, geselecteerde in het midden)
 #   2 = Modus        modus_canvas      Verwarmen / Koelen / Uit kiezen
-#   3 = Koppelen     pair_canvas       OpenAmber kiezen uit de lijst
+#   3 = Koppelen     pair_canvas       koppelcode van OpenAmber invoeren
 #   4 = Overzicht    overzicht_canvas  alleen lezen: temperaturen en compressor
 #   5 = Schema       schema_canvas     nachtverlaging per weekdag instellen
 #   6 = Foutcodes    fout_canvas       eerste actieve fout of waarschuwing met de tekst van OpenAmber
@@ -444,6 +444,14 @@ script:
       - globals.set:
           id: knob_context
           value: '3'
+      - lambda: |-
+          // Opnieuw beginnen met invoeren; de roller toont de cijfers 0 tot en met 9
+          id(pin_invoer) = 0;
+          id(pin_pos) = 0;
+          lv_obj_t *r = id(pair_roller)->obj;
+          lv_roller_set_options(r, "0\n1\n2\n3\n4\n5\n6\n7\n8\n9", LV_ROLLER_MODE_NORMAL);
+          lv_roller_set_selected(r, 0, LV_ANIM_OFF);
+          lv_obj_set_y(r, 195);                       // onder de twee regels status
       - lvgl.page.show: pair_canvas
       - script.execute: pair_refresh
 
@@ -496,69 +504,83 @@ script:
 
   # Na ${pagina_terug_min} minuten zonder bediening terug naar Temperatuur, met het menu op Temperatuur.
   # Het scherm zelf gaat eerder uit (60 s); de pagina blijft dan staan tot de timeout. Koppelen blijft
-  # open zolang er nog geen OpenAmber is gekozen.
+  # open zolang er nog geen koppelcode is ingevoerd.
   - id: page_timeout
     mode: restart
     then:
       - delay: ${pagina_terug_min}min
       - lambda: |-
           id(menu_index) = 0;
-          bool geen_code = id(pair_code).state.empty();
+          bool geen_code = id(link_code) == 0;
           if (id(knob_context) != 0 && !(id(knob_context) == 3 && geen_code)) id(show_home).execute();
 
   # ---------------------------------------------------------------------
-  # Koppelen: lijst met gevonden OpenAmbers bijwerken (elke 2 s zolang de pagina open is)
+  # Koppelen: de koppelcode van OpenAmber (6 cijfers, Instellingen > Thermostaat op OpenAmber) invoeren.
+  # Draaien = cijfer kiezen, druk = volgende cijfer. Na het zesde cijfer wordt de sleutel gezet en
+  # wacht de pagina op de eerste OpenAmber met die code (elke 2 s bijgewerkt zolang de pagina open is).
   # ---------------------------------------------------------------------
   - id: pair_refresh
-    mode: restart
     then:
       - lambda: |-
-          // Codes die langer dan 30 s niet meer zijn gehoord, verdwijnen uit de lijst
-          uint32_t now = millis();
-          for (int i = (int) id(found_codes).size() - 1; i >= 0; i--) {
-            if (now - id(found_seen)[i] > 30000) {
-              id(found_codes).erase(id(found_codes).begin() + i);
-              id(found_seen).erase(id(found_seen).begin() + i);
+          // Ingevoerde cijfers, de rest als streepje: "4 7 1 _ _ _"
+          char code[16];
+          int p = 0;
+          for (int i = 0; i < 6; i++) {
+            if (i < id(pin_pos)) {
+              int deler = 1;
+              for (int k = i + 1; k < id(pin_pos); k++) deler *= 10;
+              code[p++] = (char) ('0' + (id(pin_invoer) / deler) % 10);
+            } else {
+              code[p++] = '_';
             }
+            if (i < 5) code[p++] = ' ';
           }
-          // Opties voor de roller: elke gevonden code op een eigen regel, onderaan Annuleren
-          std::string opts;
-          for (int c : id(found_codes)) {
-            char b[8];
-            snprintf(b, sizeof(b), "%06X", c);
-            opts += b;
-            opts += "\n";
-          }
-          opts += "Annuleren";
-          // Alleen bijwerken als de lijst verandert, anders springt de selectie steeds terug
-          static std::string last;
-          lv_obj_t *r = id(pair_roller)->obj;
-          if (opts != last) {
-            int n = (int) id(found_codes).size() + 1;
-            int sel = (int) lv_roller_get_selected(r);
-            lv_roller_set_options(r, opts.c_str(), LV_ROLLER_MODE_NORMAL);
-            if (sel > n - 1) sel = n - 1;
-            lv_roller_set_selected(r, sel, LV_ANIM_OFF);
-            last = opts;
-          }
-          bool leeg = id(found_codes).empty();
-          lv_label_set_text(id(pair_label_status), leeg ? "Zoeken naar OpenAmber..." : "Kies je OpenAmber");
-          // Draaiend bolletje alleen zolang er nog niets is gevonden
-          if (leeg) lv_obj_clear_flag(id(pair_spinner), LV_OBJ_FLAG_HIDDEN);
-          else      lv_obj_add_flag(id(pair_spinner), LV_OBJ_FLAG_HIDDEN);
+          code[p] = 0;
+          bool invoeren = id(pin_pos) < 6;
+          bool gevonden = !invoeren && id(pin_ok);
+          bool te_lang = !invoeren && !gevonden && millis() - id(pin_start) > 30000;
+          std::string status;
+          const char *hint;
+          if (invoeren)      { status = std::string("Koppelcode van OpenAmber\n") + code; hint = "draai: cijfer • druk: volgende"; }
+          else if (gevonden) { status = "Gekoppeld met OpenAmber\n" + id(pair_code).state;     hint = "druk: klaar"; }
+          else if (te_lang)  { status = "Geen OpenAmber gevonden\ncontroleer de code";         hint = "druk: opnieuw"; }
+          else               { status = std::string("Verbinden met\n") + code;                  hint = "even geduld"; }
+          lv_label_set_text(id(pair_label_status), status.c_str());
+          lv_label_set_text(id(pair_label_hint), hint);
+          // Roller alleen tijdens het invoeren, het draaiende bolletje alleen tijdens het verbinden
+          if (invoeren) lv_obj_clear_flag(id(pair_roller)->obj, LV_OBJ_FLAG_HIDDEN);
+          else          lv_obj_add_flag(id(pair_roller)->obj, LV_OBJ_FLAG_HIDDEN);
+          if (!invoeren && !gevonden && !te_lang) lv_obj_clear_flag(id(pair_spinner), LV_OBJ_FLAG_HIDDEN);
+          else                                    lv_obj_add_flag(id(pair_spinner), LV_OBJ_FLAG_HIDDEN);
 
-  # Keuze in de lijst bevestigen: code bewaren (of annuleren) en terug naar Temperatuur
-  - id: pair_confirm
+  # Korte druk op de koppelpagina: cijfer vastleggen; na het zesde de code toepassen.
+  # Daarna: gekoppeld = klaar (naar Temperatuur), niet gevonden = opnieuw invoeren.
+  - id: pair_druk
     then:
       - lambda: |-
-          int sel = (int) lv_roller_get_selected(id(pair_roller)->obj);
-          int n = (int) id(found_codes).size();
-          if (sel >= 0 && sel < n) {                  // de laatste regel is Annuleren
-            char b[8];
-            snprintf(b, sizeof(b), "%06X", id(found_codes)[sel]);
-            id(pair_code).make_call().set_value(b).perform();
+          if (id(pin_pos) < 6) {
+            int cijfer = (int) lv_roller_get_selected(id(pair_roller)->obj);
+            id(pin_invoer) = id(pin_invoer) * 10 + cijfer;
+            id(pin_pos) += 1;
+            lv_roller_set_selected(id(pair_roller)->obj, 0, LV_ANIM_OFF);
+            if (id(pin_pos) == 6) {
+              if (id(pin_invoer) < 100000) {           // koppelcodes van OpenAmber beginnen nooit met 0
+                id(pin_pos) = 0;
+                id(pin_invoer) = 0;
+              } else {
+                id(link_code) = id(pin_invoer);
+                id(pin_ok) = false;
+                id(last_rx) = 0;
+                id(pin_start) = millis();
+                id(pair_code).make_call().set_value("").perform();   // de eerste OpenAmber met deze code wordt vastgelegd
+                id(link_key_apply).execute();
+              }
+            }
+            id(pair_refresh).execute();
+            return;
           }
-      - script.execute: show_home
+          if (id(pin_ok)) { id(show_home).execute(); return; }
+          if (millis() - id(pin_start) > 30000) id(show_pair).execute();   // opnieuw invoeren
 
   # ---------------------------------------------------------------------
   # Schema-pagina: drie schermen op dezelfde pagina (schema_scherm)
@@ -1057,7 +1079,7 @@ script:
                 id(modus_keuze) = ((id(modus_keuze) + delta) % 3 + 3) % 3;
             - script.execute: modus_render
 
-      # 3 = Koppelen: door de lijst met gevonden OpenAmbers lopen
+      # 3 = Koppelen: cijfer kiezen (0-9)
       - if:
           condition:
             lambda: 'return id(knob_context) == 3;'
