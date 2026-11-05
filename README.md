@@ -25,7 +25,7 @@ De koppeling aan de OpenAmber-kant staat in OpenAmber zelf
 12. [Instellingen die je kunt aanpassen](#instellingen-die-je-kunt-aanpassen)
 13. [Bekende problemen en valkuilen](#bekende-problemen-en-valkuilen)
 
-Wat nog op de planning staat: zie [BACKLOG.md](BACKLOG.md).
+Wat nog op de planning staat: zie [BACKLOG.md](BACKLOG.md). Hoe de koppeling werkt en welke bestanden erbij horen (ook in OpenAmber): zie [docs/werking.md](docs/werking.md).
 
 ## Bestanden
 
