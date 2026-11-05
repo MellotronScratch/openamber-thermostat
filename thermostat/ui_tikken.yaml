@@ -1,0 +1,71 @@
+# =====================================================================
+# Vulling en kleurverloop van de tikken rond het setpoint (meter 'climate_meter')
+#
+# Draai je aan de knop, dan lichten de tikken op van 0 tot aan het setpoint. Het kleurverloop
+# rekt mee: de eerste lichte tik is altijd de beginkleur, de laatste lichte tik altijd de eindkleur.
+# De tikken daarachter hebben de eigen kleur en dikte van de meter.
+#
+# Dit staat buiten de Designer-export, omdat de Designer een dynamische waarde niet kent en
+# weggooit. De tick_style in de Designer (end_value 63) bepaalt dus alleen wat je daar in het
+# voorbeeld ziet. Op het apparaat overschrijft dit script de kleur en dikte van elke tik.
+#
+# Een meter bestaat uit een houder (id climate_meter) met als eerste kind de eigenlijke schaal;
+# de tekenopdrachten komen van die schaal, dus de callback hoort daar. base.id1 is het tiknummer
+# (0 tot en met aantal tikken min 1), net als in de eigen kleurfunctie van ESPHome.
+#
+# Bereik van de ring per modus: laag = lege ring, hoog = volle ring. Los van het bereik van de knop
+# (target_low 15-25, target_high 18-30): ligt het setpoint buiten het ringbereik, dan blijft de ring leeg of vol.
+# Voor een ring die precies meeloopt met de knop: gebruik hier dezelfde grenzen als de knop.
+# =====================================================================
+substitutions:
+  ring_min_verwarmen: "10"
+  ring_max_verwarmen: "30"
+  ring_min_koelen: "15"
+  ring_max_koelen: "25"
+  tik_kleur_begin: "0x2EA8FF"     # eerste lichte tik (blauw)
+  tik_kleur_eind: "0xFF4D7E"      # laatste lichte tik (roze)
+  tik_kleur_uit: "0x30333B"       # tikken voorbij het setpoint: gelijk aan ticks: color in de Designer
+  tik_breed_uit: "4"              # gelijk aan ticks: width in de Designer
+  tik_breed_aan: "8"              # lichte tikken: tik_breed_uit plus de breedte van de tick_style (4)
+
+globals:
+  - id: tik_frac                  # vulling van de ring, 0..1
+    type: float
+    initial_value: '0'
+
+script:
+  # Vulling instellen en de ring opnieuw laten tekenen
+  - id: tikken_zetten
+    parameters:
+      frac: float
+    then:
+      - lambda: |-
+          id(tik_frac) = std::max(0.0f, std::min(1.0f, frac));
+          lv_obj_invalidate(id(climate_meter));
+
+esphome:
+  on_boot:
+    - priority: -102                # nadat LVGL en de pagina's er zijn
+      then:
+        - lambda: |-
+            lv_obj_t *schaal = lv_obj_get_child(id(climate_meter), 0);
+            lv_obj_add_event_cb(schaal, [](lv_event_t *e) -> void {
+              lv_draw_task_t *task = lv_event_get_draw_task(e);
+              if (lv_draw_task_get_type(task) != LV_DRAW_TASK_TYPE_LINE) return;
+              auto *line = static_cast<lv_draw_line_dsc_t *>(lv_draw_task_get_draw_dsc(task));
+              lv_obj_t *s = static_cast<lv_obj_t *>(lv_event_get_target(e));
+              int totaal = (int) lv_scale_get_total_tick_count(s);
+              int tik = line->base.id1;                               // tiknummer
+              if (totaal < 2 || tik < 0 || tik >= totaal) return;
+              int laatste = (int) lroundf(id(tik_frac) * (totaal - 1));   // laatste lichte tik
+              if (tik > laatste) {
+                line->color = lv_color_hex(${tik_kleur_uit});
+                line->width = ${tik_breed_uit};
+                return;
+              }
+              int mix = laatste == 0 ? 0 : (tik * 255) / laatste;
+              line->color = lv_color_mix(lv_color_hex(${tik_kleur_eind}), lv_color_hex(${tik_kleur_begin}), mix);
+              line->width = ${tik_breed_aan};
+            }, LV_EVENT_DRAW_TASK_ADDED, nullptr);
+            lv_obj_add_flag(schaal, LV_OBJ_FLAG_SEND_DRAW_TASK_EVENTS);
+            lv_obj_invalidate(id(climate_meter));

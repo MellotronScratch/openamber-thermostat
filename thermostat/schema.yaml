@@ -1,0 +1,386 @@
+# =====================================================================
+# Schema voor nachtverlaging, per dag instelbaar (gegenereerd; bewerk gerust met de hand)
+#
+# Per weekdag vier instellingen: begin van de dag, begin van de nacht, temperatuur overdag en
+# temperatuur 's nachts. De nacht van een dag loopt door tot de begintijd van de volgende dag.
+# Voorbeeld: dag 07:00-21:00 op 20,5 en nacht 21:00-07:00 op 19,5.
+#
+# Werking:
+#  - Alleen als "Schema actief" aan staat en de modus Verwarmen is.
+#  - Op het moment dat een periode begint (of bij opstarten) wordt het setpoint van die periode
+#    gezet en naar OpenAmber gestuurd. Draai je daarna aan de knop, dan blijft jouw waarde staan
+#    tot de volgende omschakeling.
+#  - Tijd: eigen internetklok (SNTP) als de thermostaat WiFi heeft, anders de tijd die OpenAmber
+#    meestuurt (kanaal tm, minuten sinds maandag 00:00). Zonder tijd gebeurt er niets.
+#  - Instellen kan via Home Assistant (entiteiten met categorie Configuratie).
+# =====================================================================
+globals:
+  - id: schema_periode            # laatst toegepaste periode (dag*2 + 0 voor dag / 1 voor nacht), -1 = nog geen
+    type: int
+    initial_value: '-1'
+
+  - id: klok_ref_min              # laatst ontvangen tijd van OpenAmber: minuten sinds maandag 00:00, -1 = nog niet
+    type: int
+    initial_value: '-1'
+  - id: klok_ref_ms               # millis() op het moment van ontvangst
+    type: uint32_t
+    initial_value: '0'
+
+sensor:
+  - platform: packet_transport    # tijd van OpenAmber (bron: thermostat_link.yaml, sensor thermostat_link_time)
+    provider: openamber
+    id: rx_tm
+    remote_id: tm
+    internal: true
+    filters:
+      - lambda: 'if (id(pin_ok)) return x; return NAN;'
+    on_value:
+      then:
+        - lambda: |-
+            if (std::isnan(x)) return;
+            id(klok_ref_min) = (int) lroundf(x);
+            id(klok_ref_ms) = millis();
+
+switch:
+  - platform: template
+    id: schema_actief
+    name: "Schema actief"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    on_turn_on:
+      - lambda: 'id(schema_periode) = -1;'
+      - script.execute: schema_toepassen
+
+datetime:
+  - platform: template
+    type: time
+    id: schema_ma_dag_start
+    name: "Schema Maandag begin dag"
+    optimistic: true
+    restore_value: true
+    initial_value: "07:00:00"
+    entity_category: config
+  - platform: template
+    type: time
+    id: schema_ma_nacht_start
+    name: "Schema Maandag begin nacht"
+    optimistic: true
+    restore_value: true
+    initial_value: "21:00:00"
+    entity_category: config
+  - platform: template
+    type: time
+    id: schema_di_dag_start
+    name: "Schema Dinsdag begin dag"
+    optimistic: true
+    restore_value: true
+    initial_value: "07:00:00"
+    entity_category: config
+  - platform: template
+    type: time
+    id: schema_di_nacht_start
+    name: "Schema Dinsdag begin nacht"
+    optimistic: true
+    restore_value: true
+    initial_value: "21:00:00"
+    entity_category: config
+  - platform: template
+    type: time
+    id: schema_wo_dag_start
+    name: "Schema Woensdag begin dag"
+    optimistic: true
+    restore_value: true
+    initial_value: "07:00:00"
+    entity_category: config
+  - platform: template
+    type: time
+    id: schema_wo_nacht_start
+    name: "Schema Woensdag begin nacht"
+    optimistic: true
+    restore_value: true
+    initial_value: "21:00:00"
+    entity_category: config
+  - platform: template
+    type: time
+    id: schema_do_dag_start
+    name: "Schema Donderdag begin dag"
+    optimistic: true
+    restore_value: true
+    initial_value: "07:00:00"
+    entity_category: config
+  - platform: template
+    type: time
+    id: schema_do_nacht_start
+    name: "Schema Donderdag begin nacht"
+    optimistic: true
+    restore_value: true
+    initial_value: "21:00:00"
+    entity_category: config
+  - platform: template
+    type: time
+    id: schema_vr_dag_start
+    name: "Schema Vrijdag begin dag"
+    optimistic: true
+    restore_value: true
+    initial_value: "07:00:00"
+    entity_category: config
+  - platform: template
+    type: time
+    id: schema_vr_nacht_start
+    name: "Schema Vrijdag begin nacht"
+    optimistic: true
+    restore_value: true
+    initial_value: "21:00:00"
+    entity_category: config
+  - platform: template
+    type: time
+    id: schema_za_dag_start
+    name: "Schema Zaterdag begin dag"
+    optimistic: true
+    restore_value: true
+    initial_value: "07:00:00"
+    entity_category: config
+  - platform: template
+    type: time
+    id: schema_za_nacht_start
+    name: "Schema Zaterdag begin nacht"
+    optimistic: true
+    restore_value: true
+    initial_value: "21:00:00"
+    entity_category: config
+  - platform: template
+    type: time
+    id: schema_zo_dag_start
+    name: "Schema Zondag begin dag"
+    optimistic: true
+    restore_value: true
+    initial_value: "07:00:00"
+    entity_category: config
+  - platform: template
+    type: time
+    id: schema_zo_nacht_start
+    name: "Schema Zondag begin nacht"
+    optimistic: true
+    restore_value: true
+    initial_value: "21:00:00"
+    entity_category: config
+
+number:
+  - platform: template
+    id: schema_ma_dag_temp
+    name: "Schema Maandag temperatuur dag"
+    min_value: 15
+    max_value: 25
+    step: 0.5
+    initial_value: 20.5
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    device_class: temperature
+    entity_category: config
+  - platform: template
+    id: schema_ma_nacht_temp
+    name: "Schema Maandag temperatuur nacht"
+    min_value: 15
+    max_value: 25
+    step: 0.5
+    initial_value: 19.5
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    device_class: temperature
+    entity_category: config
+  - platform: template
+    id: schema_di_dag_temp
+    name: "Schema Dinsdag temperatuur dag"
+    min_value: 15
+    max_value: 25
+    step: 0.5
+    initial_value: 20.5
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    device_class: temperature
+    entity_category: config
+  - platform: template
+    id: schema_di_nacht_temp
+    name: "Schema Dinsdag temperatuur nacht"
+    min_value: 15
+    max_value: 25
+    step: 0.5
+    initial_value: 19.5
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    device_class: temperature
+    entity_category: config
+  - platform: template
+    id: schema_wo_dag_temp
+    name: "Schema Woensdag temperatuur dag"
+    min_value: 15
+    max_value: 25
+    step: 0.5
+    initial_value: 20.5
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    device_class: temperature
+    entity_category: config
+  - platform: template
+    id: schema_wo_nacht_temp
+    name: "Schema Woensdag temperatuur nacht"
+    min_value: 15
+    max_value: 25
+    step: 0.5
+    initial_value: 19.5
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    device_class: temperature
+    entity_category: config
+  - platform: template
+    id: schema_do_dag_temp
+    name: "Schema Donderdag temperatuur dag"
+    min_value: 15
+    max_value: 25
+    step: 0.5
+    initial_value: 20.5
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    device_class: temperature
+    entity_category: config
+  - platform: template
+    id: schema_do_nacht_temp
+    name: "Schema Donderdag temperatuur nacht"
+    min_value: 15
+    max_value: 25
+    step: 0.5
+    initial_value: 19.5
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    device_class: temperature
+    entity_category: config
+  - platform: template
+    id: schema_vr_dag_temp
+    name: "Schema Vrijdag temperatuur dag"
+    min_value: 15
+    max_value: 25
+    step: 0.5
+    initial_value: 20.5
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    device_class: temperature
+    entity_category: config
+  - platform: template
+    id: schema_vr_nacht_temp
+    name: "Schema Vrijdag temperatuur nacht"
+    min_value: 15
+    max_value: 25
+    step: 0.5
+    initial_value: 19.5
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    device_class: temperature
+    entity_category: config
+  - platform: template
+    id: schema_za_dag_temp
+    name: "Schema Zaterdag temperatuur dag"
+    min_value: 15
+    max_value: 25
+    step: 0.5
+    initial_value: 20.5
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    device_class: temperature
+    entity_category: config
+  - platform: template
+    id: schema_za_nacht_temp
+    name: "Schema Zaterdag temperatuur nacht"
+    min_value: 15
+    max_value: 25
+    step: 0.5
+    initial_value: 19.5
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    device_class: temperature
+    entity_category: config
+  - platform: template
+    id: schema_zo_dag_temp
+    name: "Schema Zondag temperatuur dag"
+    min_value: 15
+    max_value: 25
+    step: 0.5
+    initial_value: 20.5
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    device_class: temperature
+    entity_category: config
+  - platform: template
+    id: schema_zo_nacht_temp
+    name: "Schema Zondag temperatuur nacht"
+    min_value: 15
+    max_value: 25
+    step: 0.5
+    initial_value: 19.5
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "°C"
+    device_class: temperature
+    entity_category: config
+
+script:
+  # Bepaalt welke periode nu geldt en zet het setpoint als die periode nieuw is
+  - id: schema_toepassen
+    then:
+      - lambda: |-
+          if (!id(schema_actief).state) return;
+          // Tijd: eigen klok als die klopt, anders de tijd van OpenAmber (telt zelf door tussen twee berichten)
+          int d, m;
+          auto nu = id(sntp_time).now();
+          if (nu.is_valid()) {
+            d = (nu.day_of_week + 5) % 7;   // dag_of_week: 1 = zondag; wij tellen 0 = maandag
+            m = nu.hour * 60 + nu.minute;
+          } else if (id(klok_ref_min) >= 0) {
+            int tot = (id(klok_ref_min) + (int) ((millis() - id(klok_ref_ms)) / 60000UL)) % 10080;
+            d = tot / 1440;
+            m = tot % 1440;
+          } else {
+            return;
+          }
+          esphome::datetime::TimeEntity *dag_start[7] = {id(schema_ma_dag_start),id(schema_di_dag_start),id(schema_wo_dag_start),id(schema_do_dag_start),id(schema_vr_dag_start),id(schema_za_dag_start),id(schema_zo_dag_start)};
+          esphome::datetime::TimeEntity *nacht_start[7] = {id(schema_ma_nacht_start),id(schema_di_nacht_start),id(schema_wo_nacht_start),id(schema_do_nacht_start),id(schema_vr_nacht_start),id(schema_za_nacht_start),id(schema_zo_nacht_start)};
+          float dag_temp[7] = {id(schema_ma_dag_temp).state,id(schema_di_dag_temp).state,id(schema_wo_dag_temp).state,id(schema_do_dag_temp).state,id(schema_vr_dag_temp).state,id(schema_za_dag_temp).state,id(schema_zo_dag_temp).state};
+          float nacht_temp[7] = {id(schema_ma_nacht_temp).state,id(schema_di_nacht_temp).state,id(schema_wo_nacht_temp).state,id(schema_do_nacht_temp).state,id(schema_vr_nacht_temp).state,id(schema_za_nacht_temp).state,id(schema_zo_nacht_temp).state};
+          int ds = dag_start[d]->hour * 60 + dag_start[d]->minute;
+          int ns = nacht_start[d]->hour * 60 + nacht_start[d]->minute;
+          int periode;
+          float temp;
+          if (m < ds) {                 // nacht van gisteren, loopt door tot begin van de dag
+            int g = (d + 6) % 7;
+            periode = g * 2 + 1;  temp = nacht_temp[g];
+          } else if (m < ns || ns <= ds) {   // overdag (ns <= ds: nacht ligt voor de dag, dan geldt de dag de rest van de dag)
+            periode = d * 2;  temp = dag_temp[d];
+          } else {
+            periode = d * 2 + 1;  temp = nacht_temp[d];
+          }
+          if (periode == id(schema_periode)) return;
+          id(schema_periode) = periode;
+          if (id(mode_code) != 1) return;    // alleen bij verwarmen
+          ESP_LOGI("schema", "Periode %d, setpoint %.1f", periode, temp);
+          id(user_is_adjusting) = true;
+          id(target_low).make_call().set_value(temp).perform();
+          id(send_command).execute();
+          id(release_adjusting).execute();
+
+interval:
+  - interval: 30s
+    then:
+      - script.execute: schema_toepassen

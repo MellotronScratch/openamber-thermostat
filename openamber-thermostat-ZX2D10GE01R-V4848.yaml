@@ -1,0 +1,228 @@
+# =====================================================================
+# OpenAmber thermostaat - bordbestand voor WT32S3-21S (ZX2D10GE01R-W4848#B)
+# WT32-S3-WROVER, 16 MB flash, 8 MB PSRAM, scherm ZX2D10GE01R-V4848 (480x480), zonder touch
+#
+# Dit is het bestand dat je compileert. Het bevat alleen wat bij dit bord hoort
+# (pinnen, scherm, backlight, ledring, draaiknop, BME680) en laadt het generieke deel.
+# Een ander scherm of bord: kopieer dit bestand en pas het aan, het generieke deel blijft gelijk.
+# =====================================================================
+
+substitutions:
+  led_bodem: "8.5"                # positie onderaan de ring: tussen led 8 en led 9 (led 2 zit bovenaan); zie ledtest
+
+packages:
+  thermostaat: !include openamber-thermostat.yaml
+
+esp32:
+  variant: esp32s3
+  flash_size: 8MB                 # module heeft 16 MB; wijzigen vraagt een flash via USB (partitietabel)
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+# ---------------------------------------------------------------------
+# 2. GPIO-OVERZICHT  WT32S3-21S (ZX2D10GE01R-W4848#B), zonder touch
+# ---------------------------------------------------------------------
+# GPIO0   BOOT-knop (strapping) / RGB_D2          (scherm-model)
+# GPIO1   EXT_IO4 -> I2C SCL, BME680 (adres 0x77) (i2c)
+# GPIO2   EXT_IO3 -> I2C SDA, BME680 (adres 0x77) (i2c)
+# GPIO3   Drukknop draaiknop (strapping, laag = ingedrukt)
+# GPIO4   Ledring, 13x XT1063 single-bus          (esp32_rmt_led_strip)
+# GPIO5   Draaiknop B, Hall-encoder (TP_SDA)      (rotary_encoder pin_b)
+# GPIO6   Draaiknop A, Hall-encoder (TP_SCL)      (rotary_encoder pin_a)
+# GPIO7   Trilmotor (TP_INT)                      (nog niet gebruikt)
+# GPIO8-18, 21, 39, 40, 42, 45, 46, 48
+#         RGB-bus van het scherm (D2..D15, DE, HS, VS, PCLK, CS)
+#                                                 (scherm-model, niet aanraken)
+# GPIO19  EXT_IO1, ook USB D-                     (vrij)
+# GPIO20  EXT_IO2, ook USB D+                     (vrij)
+# GPIO35-37  Octal PSRAM                          (niet gebruiken)
+# GPIO38  Backlight, actief hoog                  (ledc)
+# GPIO41  LCD_MOSI / RGB_D1                       (spi mosi_pin)
+# GPIO43/44  UART0 TX/RX, downloadpoort en log    (niet gebruiken)
+# GPIO47  LCD_SCLK / RGB_D0                       (spi clk_pin)
+# EN      LCD_RST                                 (scherm-model)
+#
+# Strapping-pins: GPIO0, 3, 45, 46. Niet tijdens het opstarten
+# tegen de standaardstand in vasthouden.
+# ---------------------------------------------------------------------
+
+# ---------------------------------------------------------------------
+# 3. HARDWARE
+# ---------------------------------------------------------------------
+spi:                              # alleen voor het scherm
+  clk_pin:
+    number: 47
+    allow_other_uses: true        # pin wordt ook door de RGB-bus gebruikt
+  mosi_pin:
+    number: 41
+    allow_other_uses: true
+
+i2c:                              # BME680
+  sda: GPIO2
+  scl: GPIO1
+
+output:
+  - platform: ledc                # PWM voor de backlight
+    id: display_led
+    pin: 38
+    zero_means_zero: true
+
+light:
+  - platform: monochromatic       # backlight van het scherm
+    id: backlight
+    output: display_led
+    name: Backlight
+    icon: mdi:brightness-percent
+    default_transition_length: 500ms
+    restore_mode: ALWAYS_ON
+
+  - platform: esp32_rmt_led_strip # ledring (XT1063, GPIO4)
+    pin: GPIO4
+    num_leds: 13
+    channel_colors: GRB
+    chipset: WS2812
+    id: status_leds
+    name: "Status LEDs"
+    default_transition_length: 300ms
+    effects:
+      - addressable_lambda:       # status: kleur van de modus, ademt als de compressor draait, knippert bij een fout
+          name: "Status"
+          update_interval: 40ms
+          lambda: |-
+            uint32_t nu = millis();
+            bool scherm = id(backlight).remote_values.is_on();
+            bool fout = id(remote_err).has_state() && id(remote_err).state;
+            bool waarsch = id(remote_warn).has_state() && id(remote_warn).state;
+            uint32_t k = 0;
+            float v = 0.0f;
+            if (fout || waarsch) {                         // ook als het scherm uit is
+              k = fout ? 0xFF1E00 : 0xFF8C00;              // rood of oranje
+              v = 0.2f + 0.8f * (0.5f + 0.5f * sinf(nu / 250.0f));
+              if (!scherm) v *= 0.5f;
+            } else if (scherm && id(link_ok)) {
+              if (id(mode_code) == 1) k = 0xFF5100;        // verwarmen
+              else if (id(mode_code) == 2) k = 0x2EA8FF;   // koelen; bij Uit blijft de ring donker
+              bool draait = id(rx_cf).has_state() && id(rx_cf).state > 0;
+              v = draait ? 0.3f + 0.7f * (0.5f + 0.5f * sinf(nu / 700.0f)) : 0.3f;
+            }
+            // korte flits na een draai of druk (bij modus Uit wit)
+            uint32_t sinds = nu - id(led_flits_ms);
+            if (scherm && sinds < 300) {
+              if (k == 0) k = 0xFFFFFF;
+              v = std::max(v, 1.0f - sinds / 300.0f);
+            }
+            Color c((uint8_t) (((k >> 16) & 0xFF) * v), (uint8_t) (((k >> 8) & 0xFF) * v), (uint8_t) ((k & 0xFF) * v));
+            for (int i = 0; i < it.size(); i++) it[i] = c;
+      - addressable_lambda:       # vat dat volloopt (niet meer in gebruik; vervangen door Status): onderaan beginnen, aan beide kanten omhoog, bovenaan eindigen
+          name: "Vat"
+          update_interval: 100ms
+          lambda: |-
+            const int N = 13;
+            const float bodem = ${led_bodem};
+            float tw = id(dhw_temperature_tw_sensor).state;
+            float doel = id(rx_tws).has_state() ? id(rx_tws).state : NAN;
+            if (std::isnan(doel) || doel < 30) doel = ${vat_doel_standaard};
+            float frac = std::isnan(tw) ? 0.0f : (tw - ${vat_leeg}) / (doel - ${vat_leeg});
+            frac = std::max(0.0f, std::min(1.0f, frac));
+            float niveau = frac * 7.0f;                     // 7 rijen: 6 paren van onder naar boven + de bovenste led
+            bool bezig = id(remote_da).has_state() && id(remote_da).state;
+            float puls = 0.5f + 0.5f * sinf(millis() / 300.0f);
+            for (int i = 0; i < N; i++) {
+              float d = fabsf(i - bodem);                    // afstand tot de bodem, rond de ring gemeten
+              d = std::min(d, N - d);
+              int rij = (int) roundf(d - 0.5f);              // 0 = onderste paar (led 8+9), 6 = bovenste led (led 2)
+              float v = std::max(0.0f, std::min(1.0f, niveau - rij));
+              // vooraan het vulproces pulseert de led tijdens het opwarmen
+              if (bezig && rij == (int) floorf(niveau) && v < 1.0f) v = std::max(v, 0.15f) * (0.4f + 0.6f * puls);
+              float t = rij / 6.0f;                         // kleur: blauw -> oranje -> rood
+              float r, g, b;
+              if (t < 0.5f) { float u = t * 2.0f; r = 255.0f * u; g = 80.0f + 40.0f * u; b = 255.0f * (1.0f - u); }
+              else          { float u = (t - 0.5f) * 2.0f; r = 255.0f; g = 120.0f * (1.0f - u); b = 0.0f; }
+              it[i] = Color((uint8_t) (r * v), (uint8_t) (g * v), (uint8_t) (b * v));
+            }
+      - addressable_lambda:       # ledtest (niet meer automatisch): elke led een eigen kleur: elke led een eigen kleur, om de volgorde van de ring te bepalen
+          name: "LED test"
+          update_interval: 1s
+          lambda: |-
+            // index 0..12: rood, oranje, geel, lichtgroen, groen, turkoois, cyaan, azuurblauw, blauw, paars, magenta, roze, wit
+            static const uint32_t kleur[13] = {
+              0xFF0000, 0xFF8000, 0xFFFF00, 0x80FF00, 0x00FF00, 0x00FF80, 0x00FFFF,
+              0x0080FF, 0x0000FF, 0x8000FF, 0xFF00FF, 0xFF0080, 0xFFFFFF };
+            for (int i = 0; i < it.size() && i < 13; i++)
+              it[i] = Color((kleur[i] >> 16) & 0xFF, (kleur[i] >> 8) & 0xFF, kleur[i] & 0xFF);
+
+display:
+  - platform: mipi_rgb
+    model: zx2d10ge01r-v4848
+
+binary_sensor:
+  - platform: gpio                # drukknop op de draaiknop
+    id: encoder_button
+    pin:
+      number: GPIO3
+      mode: INPUT_PULLUP
+      inverted: true
+    on_click:
+      # Korte druk: scherm wisselen (of in de koppelpagina: keuze bevestigen)
+      - min_length: 20ms
+        max_length: 800ms
+        then:
+          - script.execute: knob_press_short
+      # Lange druk (langer dan 0,8 s): de koppelpagina openen
+      - min_length: 800ms
+        max_length: 10s
+        then:
+          - script.execute: knob_press_long
+
+sensor:
+  # --- Draaiknop (Hall-encoder) ---
+  # Elke klik roept knob_step aan; wat er verandert hangt af van knob_context (zie sectie 6).
+  - platform: rotary_encoder
+    id: knob
+    internal: false
+    pin_a:
+      number: GPIO6
+      inverted: true
+      mode: INPUT
+    pin_b:
+      number: GPIO5
+      inverted: true
+      mode: INPUT
+    on_clockwise:
+      - script.execute:
+          id: knob_step
+          delta: 1
+    on_anticlockwise:
+      - script.execute:
+          id: knob_step
+          delta: -1
+
+  # --- BME680 (eigen meting in de kamer) ---
+  # Let op: het verwarmingselement en de ledring maken de temperatuur te hoog;
+  # vergelijk met een thermometer en corrigeer met "filters: - offset: -X".
+  - platform: bme680
+    address: 0x77                 # bevestigd door de I2C-scan
+    update_interval: 15s
+    temperature:
+      id: bme_temp
+      name: "Kamertemperatuur"
+      internal: false
+    humidity:
+      id: bme_hum
+      name: "Luchtvochtigheid"
+      internal: false
+    pressure:
+      id: bme_pres
+      name: "Luchtdruk"
+      internal: false
+    gas_resistance:
+      id: bme_gas
+      name: "Gasweerstand"
+      internal: false
+
+lvgl:
+  buffer_size: 25%   # past bij dit scherm; hoort hier en niet in de Designer-export

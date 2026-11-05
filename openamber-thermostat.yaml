@@ -1,0 +1,839 @@
+# =====================================================================
+# OpenAmber thermostaat - generiek deel (alles wat niet van het scherm of bord afhangt)
+#
+# Dit bestand compileert niet alleen. Het wordt geladen door een bordbestand, bijvoorbeeld
+# openamber-thermostat-ZX2D10GE01R-V4848.yaml (WT32S3-21S, ZX2D10GE01R-W4848#B), dat de hardware levert.
+#
+# Het bordbestand moet leveren:
+#   display, lvgl.buffer_size, light 'backlight' en 'status_leds' (met effect "Status"),
+#   sensors bme_temp / bme_hum / bme_pres / bme_gas, en bij de knop:
+#     draaien      -> script knob_step (delta: 1 of -1)
+#     korte druk   -> script knob_press_short
+#     lange druk   -> script knob_press_long
+# Praat via packet_transport met het OpenAmber-display op de warmtepomp (ESP-NOW; UDP voor de virtuele display),
+# zonder MAC-adres: broadcast met een gedeelde sleutel (substitution thermostat_link_key).
+#
+# Wat er over de lucht gaat (sensors en binary sensors, zie ESPHome packet_transport):
+#   OpenAmber -> hier : tw tws tc tuo tui ta rt (temperaturen), cf (compressorfrequentie Hz), ec (foutcode),
+#                       wsp (gewenste aanvoertemperatuur: stooklijn, handmatig of koelen)
+#                       slo shi mode (werkelijke setpoints en modus, 0=uit 1=verwarmen 2=koelen)
+#                       twa err warn legp wv cd twp twv da lega dfr bu (status, binary sensors)
+#   hier -> OpenAmber : bt bh dp (BME680)
+#                       cmd (commando: volgnummer + modus + setpoints in een getal)
+# De statussen (twa err warn legp wv cd twp twv da lega dfr bu) gaan als binary sensor over;
+# alleen de setpoints en de modus zijn sensors (een climate kan niet rechtstreeks gedeeld worden).
+#
+# Opbouw van dit bestand:
+#   1. Basis          2. GPIO-overzicht   3. Hardware
+#   4. Sensoren       5. Bediening        6. Scripts
+#   7. ESP-NOW        8. Scherm (LVGL; pagina's en scripts in thermostat/)
+# =====================================================================
+
+# ---------------------------------------------------------------------
+# 1. BASIS
+# ---------------------------------------------------------------------
+# Geen MAC-adres nodig: de koppeling werkt met broadcast en een gedeelde sleutel.
+
+substitutions:
+  # Gedeelde sleutel voor ESP-NOW. Moet gelijk zijn aan thermostat_link_key in OpenAmber
+  # (src/openamber/thermostat_link/thermostat_link.yaml); daar is dit ook de standaard.
+  thermostat_link_key: openamber-thermostat-link
+  vat_leeg: "20"                  # tapwatertemperatuur waarbij het vat als leeg getoond wordt (graden)
+  condens_marge: "2"              # waarschuwen als de aanvoer minder dan zoveel graden boven het dauwpunt komt (bij koelen)
+  vat_doel_standaard: "55"        # gebruikt als OpenAmber geen tapwater-setpoint doorgeeft (graden)
+
+globals:
+  - id: last_rx                   # tijdstip (ms) van het laatste pakket van de gekoppelde OpenAmber; 0 = nog niets ontvangen
+    type: uint32_t
+    initial_value: '0'
+  - id: link_ok                   # true zolang er pakketten van de gekoppelde OpenAmber binnenkomen
+    type: bool
+    initial_value: 'false'
+  - id: condens_warn              # true als koelen op het punt staat condens te geven
+    type: bool
+    initial_value: 'false'
+  - id: pin_ok                    # true als de koppelcode van OpenAmber gelijk is aan de eigen koppelcode
+    type: bool
+    initial_value: 'false'
+  - id: found_codes               # codes (MAC-staart) van OpenAmbers die recent zijn gehoord
+    type: std::vector<int>
+  - id: found_seen                # tijdstip (ms) waarop die code het laatst is gehoord
+    type: std::vector<uint32_t>
+  - id: user_is_adjusting         # true zolang er aan de knop wordt gedraaid
+    type: bool
+    initial_value: 'false'
+  - id: cmd_seq                   # volgnummer van het laatste commando (1-99), blijft bewaard
+    type: int
+    restore_value: yes
+    initial_value: '0'
+  - id: mode_code                 # gekozen modus: 0=uit, 1=verwarmen, 2=koelen
+    type: int
+    initial_value: '0'
+  - id: led_flits_ms              # tijdstip (ms) van de laatste draai of druk: de ledring flitst dan kort
+    type: uint32_t
+    initial_value: '0'
+  - id: pending_mode              # modus voor het volgende commando; 3 = ongewijzigd laten
+    type: int
+    initial_value: '3'
+  - id: knob_context              # 0 = Temperatuur (setpoint instellen), 1 = menu, 2 = modus kiezen, 3 = koppelen, 4 = overzicht, 5 = schema, 6 = foutcodes, 7 = instellingen, 8 = update
+    type: int
+    initial_value: '0'
+
+esphome:
+  name: openamber-thermostaat
+  friendly_name: OpenAmber Thermostaat
+  on_boot:
+    - then:
+        - script.execute: reset_backlight_timer
+    - priority: -100              # nadat LVGL is opgestart
+      then:
+        # De Designer zet een zwarte "top_layer"; als die ondoorzichtig is, bedekt hij alle pagina's.
+        # Daarom hier doorzichtig maken (blijft werken na een nieuwe export uit de Designer).
+        - lambda: |-
+            lv_obj_set_style_bg_opa(lv_layer_top(), LV_OPA_TRANSP, 0);
+        - lvgl.page.show: climate_canvas           # Temperatuur is de startpagina
+        # Ledring aan of uit volgens de instellingen
+        - script.execute: led_update
+        # Statusicoontjes: kleur, symbool en zichtbaarheid volgen de status van OpenAmber
+        - script.execute: update_status_icons
+        # Nog niet gekoppeld? Open dan na een paar seconden vanzelf de koppelpagina
+        - delay: 3s
+        - if:
+            condition:
+              lambda: 'return id(pair_code).state.empty();'
+            then:
+              - script.execute: show_pair
+
+logger:
+  level: DEBUG               # TIJDELIJK voor het testen van ESP-NOW; terug naar INFO
+  logs:
+    espnow: DEBUG             # TIJDELIJK; normaal NONE (te veel logregels en geheugen)
+    packet_transport: DEBUG   # TIJDELIJK
+    sensor: WARN              # anders vult de log zich elke paar seconden met sensorwaarden
+    number: WARN
+    select: WARN
+    binary_sensor: WARN
+    light: WARN
+    lvgl: NONE                # alleen aanzetten bij schermproblemen
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    encryption:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none         # anders slaapt de radio tussendoor en gaan ESP-NOW-pakketten verloren (net als OpenAmber)
+  ap:
+    ssid: OpenAmber Therm Fallback Hotspot
+    password: !secret ap_password
+
+captive_portal:
+
+binary_sensor:
+  # --- Status van OpenAmber: binary sensors die rechtstreeks via packet_transport binnenkomen ---
+  # Elke regel zegt waar de waarde op OpenAmber vandaan komt (bron-id staat tussen haakjes).
+  # remote_id is de naam waaronder OpenAmber hem verstuurt (broadcast_id in packet_transport.yaml).
+  - platform: packet_transport
+    provider: openamber
+    id: remote_twa
+    remote_id: twa                # bron: switch "Tapwater aanwezig" (dhw_enabled_switch)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return {};'
+    name: "Tapwater Aanwezig"
+    internal: false
+    on_state:
+      then:
+        - script.execute: update_status_icons
+
+  - platform: packet_transport
+    provider: openamber
+    id: remote_err
+    remote_id: err                # bron: binary sensor "Error actief" (error_active)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return {};'
+    name: "Error Actief"
+    device_class: problem
+    internal: false
+    on_state:
+      then:
+        - script.execute: update_status_icons
+
+  - platform: packet_transport
+    provider: openamber
+    id: remote_warn
+    remote_id: warn               # bron: binary sensor "Waarschuwing actief" (warning_active)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return {};'
+    name: "Waarschuwing Actief"
+    device_class: problem
+    internal: false
+    on_state:
+      then:
+        - script.execute: update_status_icons
+
+  - platform: packet_transport
+    provider: openamber
+    id: remote_legp
+    remote_id: legp               # bron: switch "Legionellapreventie" (legio_enabled_switch)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return {};'
+    name: "Legionellapreventie Actief"
+    internal: false
+
+  - platform: packet_transport
+    provider: openamber
+    id: remote_wv
+    remote_id: wv                 # bron: binary sensor "Warmtevraag" (heat_demand_active_sensor)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return {};'
+    name: "Warmtevraag"
+    device_class: running
+    internal: false
+    on_state:
+      then:
+        - script.execute: update_status_icons
+
+  - platform: packet_transport
+    provider: openamber
+    id: remote_twp
+    remote_id: twp                # bron: binary sensor "Tapwater pomp" (dhw_pump_active_sensor)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return {};'
+    name: "Tapwater Pomp"
+    device_class: running
+    internal: false
+    on_state:
+      then:
+        - script.execute: update_status_icons
+
+  - platform: packet_transport
+    provider: openamber
+    id: remote_twv
+    remote_id: twv                # bron: binary sensor "Tapwater vraag" (dhw_demand_active_sensor)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return {};'
+    name: "Tapwater Vraag"
+    device_class: running
+    internal: false
+    on_state:
+      then:
+        - script.execute: update_status_icons
+
+  - platform: packet_transport
+    provider: openamber
+    id: remote_lega
+    remote_id: lega               # bron: binary sensor "Legionellacyclus actief" (dhw_legionella_run_active_sensor)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return {};'
+    name: "Legionellacyclus Actief"
+    device_class: running
+    internal: false
+    on_state:
+      then:
+        - script.execute: update_status_icons
+
+  - platform: packet_transport
+    provider: openamber
+    id: remote_cd
+    remote_id: cd                 # bron: binary sensor "Koudevraag" (cool_demand_active_sensor)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return {};'
+    name: "Koudevraag"
+    device_class: running
+    internal: false
+    on_state:
+      then:
+        - script.execute: update_status_icons
+
+  - platform: packet_transport
+    provider: openamber
+    id: remote_da
+    remote_id: da                 # bron: tapwater is bezig (dhw_active, intern in OpenAmber)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return {};'
+    name: "Tapwater Bezig"
+    device_class: running
+    internal: false
+    on_state:
+      then:
+        - script.execute: update_status_icons
+
+  - platform: packet_transport
+    provider: openamber
+    id: remote_dfr
+    remote_id: dfr                # bron: binary sensor "Defrost" (defrost_active_sensor)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return {};'
+    name: "Ontdooien"
+    device_class: running
+    internal: false
+    on_state:
+      then:
+        - script.execute: update_status_icons
+
+  - platform: packet_transport
+    provider: openamber
+    id: remote_bu
+    remote_id: bu                 # bron: binary sensor "Verwarmingselement" (backup_heater_active_sensor)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return {};'
+    name: "Verwarmingselement"
+    device_class: running
+    internal: false
+    on_state:
+      then:
+        - script.execute: update_status_icons
+
+# ---------------------------------------------------------------------
+# 4. SENSOREN
+# ---------------------------------------------------------------------
+sensor:
+  # --- Koppelcode ---
+  # De code van OpenAmber (laatste 6 hex-tekens van zijn MAC) komt als eerste waarde in elk pakket binnen.
+  # Is hij gelijk aan de eigen code, dan worden de waarden hieronder gebruikt, anders genegeerd.
+  # Alle OpenAmbers in de buurt worden bijgehouden voor de lijst op de koppelpagina.
+  - platform: packet_transport
+    provider: openamber
+    id: remote_pin
+    remote_id: pin
+    internal: true
+    on_value:
+      then:
+        - lambda: |-
+            int c = (int) lroundf(x);
+            if (c <= 0) return;
+            uint32_t now = millis();
+            for (size_t i = 0; i < id(found_codes).size(); i++) {
+              if (id(found_codes)[i] == c) { id(found_seen)[i] = now; return; }
+            }
+            if (id(found_codes).size() < 8) {          // maximaal 8 codes onthouden
+              id(found_codes).push_back(c);
+              id(found_seen).push_back(now);
+            }
+        - script.execute: pin_check
+        - lambda: |-
+            if (id(pin_ok)) id(last_rx) = millis();
+
+  # Eigen koppelcode (de gekozen OpenAmber), wordt als eerste waarde in elk pakket verstuurd
+  - platform: template
+    id: pin_out
+    internal: true
+    update_interval: 10s
+    lambda: |-
+      // Ingetypte code (6 hex-tekens) omzetten naar een getal; ongeldig of leeg wordt 0
+      std::string t = id(pair_code).state;
+      if (t.size() != 6) return 0.0f;
+      char *end = nullptr;
+      long v = strtol(t.c_str(), &end, 16);
+      return (*end == 0) ? (float) v : 0.0f;
+
+  # Dauwpunt, berekend uit temperatuur en luchtvochtigheid (Magnus-formule)
+  - platform: template
+    id: bme_dewpoint
+    name: "Dauwpunt"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 10s
+    internal: false
+    lambda: |-
+      float t = id(bme_temp).state;
+      float rh = id(bme_hum).state;
+      // Nog geen geldige meting? Dan ook geen dauwpunt.
+      if (std::isnan(t) || std::isnan(rh) || rh <= 0) return NAN;
+      const float b = 17.62, c = 243.12;
+      float g = logf(rh / 100.0f) + (b * t) / (c + t);
+      return (c * g) / (b - g);
+
+  # Commando naar OpenAmber: volgnummer, modus en setpoints in een getal
+  #   cmd = ((volgnr * 4 + modus) * 100 + laag*2) * 100 + hoog*2   (modus 3 = ongewijzigd)
+  # Blijft leeg (NaN) tot de gebruiker iets verandert, zodat een herstart
+  # geen oud commando herhaalt. Wordt gevuld door het script send_command.
+  - platform: template
+    id: cmd
+    name: "Commando naar OpenAmber"
+    internal: false
+    update_interval: never
+
+  # --- Temperaturen van OpenAmber (provider: openamber) ---
+  # remote_id is de naam waaronder OpenAmber de waarde verstuurt (broadcast_id in packet_transport.yaml).
+  # Op OpenAmber zijn dit de modbus-sensors met dezelfde naam als hier (bron-id staat bij elke sensor).
+  - platform: packet_transport
+    provider: openamber
+    id: rx_cf
+    remote_id: cf               # bron op OpenAmber: current_compressor_frequency (Hz)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return NAN;'
+    internal: true
+
+  - platform: packet_transport
+    provider: openamber
+    id: rx_ec
+    remote_id: ec               # bron op OpenAmber: thermostat_link_error_code (1xx=P, 2xx=F, 3xx=E, 4xx=overig, 0=geen)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return NAN;'
+    internal: true
+
+  - platform: packet_transport
+    provider: openamber
+    id: rx_wsp
+    remote_id: wsp              # bron op OpenAmber: current_setpoint (gewenste aanvoertemperatuur)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return NAN;'
+    internal: true
+
+  - platform: packet_transport
+    provider: openamber
+    id: rx_tws
+    remote_id: tws              # bron op OpenAmber: current_dhw_setpoint_sensor (doeltemperatuur tapwater)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return NAN;'
+    internal: true
+
+  - platform: packet_transport
+    provider: openamber
+    id: dhw_temperature_tw_sensor
+    remote_id: tw               # bron op OpenAmber: dhw_temperature_tw_sensor
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return NAN;'
+    name: "OpenAmber Tapwatertemperatuur (Tw)"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    accuracy_decimals: 1
+    internal: false
+
+  - platform: packet_transport
+    provider: openamber
+    id: heat_cool_temperature_tc
+    remote_id: tc               # bron op OpenAmber: heat_cool_temperature_tc
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return NAN;'
+    name: "OpenAmber CV-aanvoertemperatuur (Tc)"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    accuracy_decimals: 1
+    internal: false
+
+  - platform: packet_transport
+    provider: openamber
+    id: outlet_temperature_tuo
+    remote_id: tuo               # bron op OpenAmber: outlet_temperature_tuo
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return NAN;'
+    name: "OpenAmber CV-aanvoertemperatuur (Tuo)"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    accuracy_decimals: 1
+    internal: false
+
+  - platform: packet_transport
+    provider: openamber
+    id: inlet_temperature_tui
+    remote_id: tui               # bron op OpenAmber: inlet_temperature_tui
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return NAN;'
+    name: "OpenAmber CV-retourtemperatuur (Tui)"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    accuracy_decimals: 1
+    internal: false
+
+  - platform: packet_transport
+    provider: openamber
+    id: temperature_outside_ta
+    remote_id: ta               # bron op OpenAmber: temperature_outside_ta
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return NAN;'
+    name: "OpenAmber Buitentemperatuur (Ta)"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    accuracy_decimals: 1
+    internal: false
+
+  - platform: packet_transport
+    provider: openamber
+    id: room_temperature
+    remote_id: rt               # bron op OpenAmber: room_temperature
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return NAN;'
+    name: "OpenAmber Ruimtetemperatuur (Tr)"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    accuracy_decimals: 1
+    internal: false
+
+  # --- Werkelijke setpoints en modus van OpenAmber ---
+  # Bron op OpenAmber: de thermostaat "Amber thermostat" (climate_controller). Een climate kan niet rechtstreeks
+  # gedeeld worden, daarom staan er op OpenAmber drie kleine template-sensors (thermostat_link_target_low, _target_high,
+  # _mode) die de waarden uit de climate lezen.
+  # Alleen overnemen als de gebruiker niet zelf aan de knop draait.
+  - platform: packet_transport
+    provider: openamber
+    id: rx_slo
+    remote_id: slo                # bron: climate_controller, laag setpoint (thermostat_link_target_low)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return NAN;'
+    internal: false
+    on_value:
+      then:
+        - lambda: |-
+            if (!id(user_is_adjusting) && !std::isnan(x)) id(target_low).publish_state(x);
+
+  - platform: packet_transport
+    provider: openamber
+    id: rx_shi
+    remote_id: shi                # bron: climate_controller, hoog setpoint (thermostat_link_target_high)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return NAN;'
+    internal: false
+    on_value:
+      then:
+        - lambda: |-
+            if (!id(user_is_adjusting) && !std::isnan(x)) id(target_high).publish_state(x);
+
+  - platform: packet_transport
+    provider: openamber
+    id: rx_mode
+    remote_id: mode               # bron: climate_controller, modus 0=uit 1=verwarmen 2=koelen (thermostat_link_mode)
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return NAN;'
+    internal: false
+    on_value:
+      then:
+        - lambda: |-
+            if (id(user_is_adjusting) || std::isnan(x)) return;
+            int m = (int) lroundf(x);
+            if (m == 1)      id(hp_mode).publish_state("Verwarmen");
+            else if (m == 2) id(hp_mode).publish_state("Koelen");
+            else             id(hp_mode).publish_state("Uit");
+        - script.execute: update_status_icons
+
+# ---------------------------------------------------------------------
+# 5. BEDIENING (setpoints en modus)
+# ---------------------------------------------------------------------
+text:
+  - platform: template            # code van de OpenAmber waarmee deze thermostaat praat
+    id: pair_code
+    name: "Koppelcode OpenAmber"
+    # Wordt gevuld via de koppelpagina op de thermostaat; handmatig kan ook:
+    # de laatste 6 tekens van het MAC-adres van OpenAmber (WiFi-pagina), bijvoorbeeld 112233
+    mode: text
+    min_length: 0
+    max_length: 6
+    initial_value: ""
+    optimistic: true
+    restore_value: true           # blijft bewaard na herstart en update
+    entity_category: config
+    on_value:
+      then:
+        - script.execute: pin_check
+        - component.update: pin_out
+
+number:
+  - platform: template            # setpoint verwarmen
+    id: target_low
+    name: "Setpoint laag"
+    min_value: 15
+    max_value: 25
+    step: 0.5
+    initial_value: 20.5
+    optimistic: true
+    unit_of_measurement: "°C"
+    device_class: temperature
+    on_value:
+      then:
+        # Boog en label tonen het setpoint van de gekozen modus
+        - script.execute: refresh_setpoint_ui
+        # Versturen gebeurt bewust vanuit de draaiknop, niet hier: anders
+        # zou elke binnenkomende waarde van OpenAmber weer een commando geven.
+
+  - platform: template            # setpoint koelen (met de knop te bedienen als de modus Koelen is)
+    id: target_high
+    name: "Setpoint hoog"
+    min_value: 18                 # gelijk aan thermostat_default_cool_setpoint in OpenAmber
+    max_value: 30
+    step: 0.5
+    initial_value: 24.0
+    optimistic: true
+    unit_of_measurement: "°C"
+    device_class: temperature
+    set_action:
+      - script.execute: send_command
+    on_value:
+      then:
+        - script.execute: refresh_setpoint_ui
+
+  - platform: template            # helderheid van de ledring (instellingenpagina)
+    id: ledring_helderheid
+    name: "Ledring helderheid"
+    min_value: 5
+    max_value: 100
+    step: 5
+    initial_value: 40
+    optimistic: true
+    restore_value: true
+    unit_of_measurement: "%"
+    entity_category: config
+    on_value:
+      then:
+        - script.execute: led_update
+
+switch:
+  - platform: template            # ledring aan of uit (instellingenpagina)
+    id: ledring_aan
+    name: "Ledring"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    on_turn_on:
+      - script.execute: led_update
+    on_turn_off:
+      - script.execute: led_update
+
+select:
+  - platform: template            # modus van de warmtepomp
+    id: hp_mode
+    name: "Modus"
+    options: ["Uit", "Verwarmen", "Koelen"]
+    initial_option: "Uit"
+    optimistic: true
+    set_action:
+      - globals.set:
+          id: user_is_adjusting
+          value: 'true'
+      # Alleen bij een moduskeuze gaat de modus mee in het commando
+      - lambda: |-
+          id(pending_mode) = (x == "Verwarmen") ? 1 : (x == "Koelen") ? 2 : 0;
+      - script.execute: send_command
+      - script.execute: release_adjusting
+    on_value:
+      then:
+        # Houd de modus als getal bij; send_command leest die
+        - lambda: |-
+            id(mode_code) = (x == "Verwarmen") ? 1 : (x == "Koelen") ? 2 : 0;
+        # Boog en label tonen bij Koelen het hoge en anders het lage setpoint
+        - script.execute: refresh_setpoint_ui
+
+# --- Klok (via internet, SNTP); op dit moment staat er geen klok op het scherm ---
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: "Europe/Amsterdam"
+
+# ---------------------------------------------------------------------
+# 6. SCRIPTS
+# ---------------------------------------------------------------------
+script:
+  # Vergelijkt de code van OpenAmber met de eigen (ingetypte of gekozen) code
+  - id: pin_check
+    then:
+      - lambda: |-
+          // Ingetypte code (6 hex-tekens) omzetten naar een getal; ongeldig of leeg wordt 0
+          std::string t = id(pair_code).state;
+          char *end = nullptr;
+          long mine = (t.size() == 6) ? strtol(t.c_str(), &end, 16) : 0;
+          if (end != nullptr && *end != 0) mine = 0;
+          id(pin_ok) = mine > 0 && id(remote_pin).has_state() &&
+                       lroundf(id(remote_pin).state) == mine;
+
+  # Korte druk op de knop; wat hij doet hangt af van de pagina:
+  #   Temperatuur -> menu (met het laatst gekozen item in het midden)    Menu -> het gekozen item openen
+  #   Modus -> bevestigen    Koppelen -> bevestigen    Overzicht -> terug naar het menu    Schema -> openen of bewaren
+
+  - id: button_short
+    then:
+      - lambda: |-
+          switch (id(knob_context)) {
+            case 0: id(show_menu).execute(); break;     // menu_index blijft staan: het laatst gekozen item
+            case 1: id(menu_open).execute(); break;
+            case 2: id(modus_apply).execute(); break;
+            case 3: id(pair_confirm).execute(); break;
+            case 7: id(inst_druk).execute(); break;
+            case 8: id(update_druk).execute(); break;
+            case 5: id(schema_druk).execute(); break;
+            default: id(show_menu).execute(); break;
+          }
+
+  # Acties van de drukknop; het bordbestand roept deze aan bij een korte of lange druk
+  - id: knob_press_short
+    then:
+      - if:
+          condition:
+            light.is_off: backlight          # scherm is donker: alleen wakker maken
+          then:
+            - script.execute: reset_backlight_timer
+          else:
+            - script.execute: reset_backlight_timer
+            - script.execute: button_short
+
+  # Lange druk: terug naar Temperatuur (op Temperatuur zelf doet het niets). De koppelpagina
+  # open je via het menu. Op de schemapagina gaat lange druk een stap terug.
+  - id: knob_press_long
+    then:
+      - script.execute: reset_backlight_timer
+      - if:
+          condition:
+            lambda: 'return id(knob_context) == 5;'
+          then:
+            - script.execute: schema_terug
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(knob_context) != 0;'
+                then:
+                  - script.execute: show_home
+
+  - id: send_command
+    mode: restart
+    then:
+      - delay: 600ms
+      - lambda: |-
+          // Nieuw volgnummer 1-99; OpenAmber voert elk volgnummer maar een keer uit
+          id(cmd_seq) = id(cmd_seq) % 99 + 1;
+          int lo2 = (int) lroundf(id(target_low).state * 2.0f);
+          int hi2 = (int) lroundf(id(target_high).state * 2.0f);
+          // Modus: 0 uit, 1 verwarmen, 2 koelen, 3 = ongewijzigd laten (alleen setpoints)
+          int mode = id(pending_mode);
+          id(pending_mode) = 3;
+          float v = ((id(cmd_seq) * 4 + mode) * 100 + lo2) * 100 + hi2;
+          id(cmd).publish_state(v);
+          ESP_LOGI("cmd", "Verstuurd: volgnr %d, modus %d, %.1f - %.1f (waarde %.0f)",
+                   id(cmd_seq), mode, id(target_low).state, id(target_high).state, v);
+
+  # Zet de vlag "gebruiker draait" 3 s na de laatste klik weer uit.
+  # Zolang de vlag aan staat, negeren we setpoints en modus die OpenAmber terugstuurt.
+
+  - id: release_adjusting
+    mode: restart
+    then:
+      - delay: 3s
+      - globals.set:
+          id: user_is_adjusting
+          value: 'false'
+
+  # Scherm en ledring 60 s aan na bediening of start. De pagina-timeout (terug naar Temperatuur)
+  # loopt alleen opnieuw als het scherm al aan stond: wakker maken telt niet als bediening,
+  # zodat de tijd vanaf de laatste echte bediening gerekend blijft.
+
+  - id: reset_backlight_timer
+    mode: restart
+    then:
+      - lambda: 'id(led_flits_ms) = millis();'   # ledring flitst kort bij elke draai of druk
+      - if:
+          condition:
+            light.is_on: backlight
+          then:
+            - script.execute: page_timeout
+      - light.turn_on:
+          id: backlight
+          brightness: 100%
+      - delay: 60s
+      - light.turn_off:
+          id: backlight
+          transition_length: 1s
+
+  # Ledring: aan met het effect "Status" of uit. Het effect bepaalt zelf wat er brandt:
+  # scherm aan = kleur van de modus (ademt als de compressor draait), scherm uit = alleen
+  # een fout (rood) of waarschuwing (oranje) knippert.
+  - id: led_update
+    then:
+      - if:
+          condition:
+            switch.is_on: ledring_aan
+          then:
+            - light.turn_on:
+                id: status_leds
+                brightness: !lambda 'return id(ledring_helderheid).state / 100.0f;'
+                effect: "Status"
+          else:
+            - light.turn_off: status_leds
+
+
+  # De scripts voor het scherm (pagina's wisselen, draaiknop per pagina, iconen) staan in
+  # thermostat/ui_scripts.yaml.
+
+# ---------------------------------------------------------------------
+# 7. ESP-NOW (packet_transport)
+# ---------------------------------------------------------------------
+# Sleutel: substitution thermostat_link_key (zie 1. Basis), gelijk aan die van OpenAmber.
+espnow:
+  id: openamber_thermostat
+  auto_add_peer: true           # onbekende afzenders worden vanzelf toegevoegd; zonder de sleutel wordt er niets mee gedaan
+
+packet_transport:
+  - platform: espnow
+    id: transport_broadcast
+    espnow_id: openamber_thermostat
+    # Geen peer_address: de pakketten gaan als broadcast. De versleuteling zorgt dat alleen
+    # een apparaat met dezelfde sleutel iets met de pakketten kan.
+    encryption: ${thermostat_link_key}
+    # Rolling code staat uit (zie eerdere problemen rond herstarts).
+    # rolling_code_enable: true
+    providers:
+      - name: openamber           # moet gelijk zijn aan "esphome: name:" van OpenAmber
+        encryption: ${thermostat_link_key}   # nodig om de pakketten van OpenAmber te kunnen lezen
+    sensors:
+      - id: pin_out               # koppelcode: altijd als eerste, zodat de ontvanger hem eerst kent
+        broadcast_id: pin
+      - id: bme_temp
+        broadcast_id: bt
+      - id: bme_hum
+        broadcast_id: bh
+      - id: bme_dewpoint
+        broadcast_id: dp
+      - id: cmd
+        broadcast_id: cmd
+
+interval:
+  - interval: 15s                 # kamertemperatuur (Tr of BME680, zie kamer_bron) op de temperatuurpagina tonen
+    then:
+      - script.execute: update_room_temp
+
+  - interval: 5s                  # verbinding en condenswaarschuwing bijwerken
+    then:
+      - lambda: |-
+          // Verbinding: er moet de laatste minuut een pakket van de gekoppelde OpenAmber zijn gekomen
+          id(link_ok) = id(last_rx) != 0 && (millis() - id(last_rx)) < 60000;
+          // Condens: bij koelen komt de aanvoer dicht bij of onder het dauwpunt van de kamer
+          float tuo = id(outlet_temperature_tuo).state;
+          float dp = id(bme_dewpoint).state;
+          bool koelen = id(rx_mode).has_state() && lroundf(id(rx_mode).state) == 2;
+          id(condens_warn) = id(link_ok) && koelen && !std::isnan(tuo) && !std::isnan(dp) &&
+                             tuo < dp + ${condens_marge};
+      - script.execute: update_status_icons
+
+  - interval: 2s                  # alleen de pagina die open staat bijwerken
+    then:
+      - if:
+          condition:
+            lambda: 'return id(knob_context) == 3;'
+          then:
+            - script.execute: pair_refresh          # lijst op de koppelpagina
+      - if:
+          condition:
+            lambda: 'return id(knob_context) == 4;'
+          then:
+            - script.execute: update_overzicht      # waarden op de overzichtspagina
+      - if:
+          condition:
+            lambda: 'return id(knob_context) == 6;'
+          then:
+            - script.execute: fout_render           # foutcode op de foutcodespagina
+
+# ---------------------------------------------------------------------
+# 8. SCHERM (LVGL)
+# De pagina's, lettertypen en kleuren komen uit de LVGL Designer en staan in
+# thermostat/ui_designer.yaml; de scripts die het scherm bedienen in
+# thermostat/ui_scripts.yaml. Beide worden hier samengevoegd.
+# ---------------------------------------------------------------------
+packages:
+  ui_designer: !include thermostat/ui_designer.yaml
+  ui_fonts: !include thermostat/ui_fonts.yaml
+  ui_scripts: !include thermostat/ui_scripts.yaml
+  ui_tikken: !include thermostat/ui_tikken.yaml
+  schema: !include thermostat/schema.yaml

@@ -1,0 +1,140 @@
+# =====================================================================
+# OpenAmber thermostaat - emulator op de laptop (ESPHome "host" met een SDL-venster)
+#
+# Starten (in de hoofdmap):   esphome run openamber-thermostat-emulator.yaml
+# Nodig: SDL2 (macOS: brew install sdl2)
+#
+# Bediening in het venster:
+#   pijltje links / rechts = draaiknop        Enter = korte druk        Backspace = lange druk
+#
+# Laadt hetzelfde generieke deel als de echte thermostaat; het bordbestand blijft onaangeroerd.
+# Wat op een laptop niet bestaat (WiFi, ESP-NOW, BME680, ledring) is weggehaald of nagebootst:
+# er komen geen gegevens van OpenAmber binnen, de BME680 geeft vaste voorbeeldwaarden.
+# =====================================================================
+
+packages:
+  thermostaat: !include openamber-thermostat.yaml
+  weg: !include thermostat/emulator_weg.yaml
+
+esphome:
+  name: openamber-thermostaat-emulator    # eigen naam: een eigen bouwmap, los van de echte thermostaat
+  friendly_name: OpenAmber Thermostaat (emulator)
+
+host:
+
+display:
+  - platform: sdl
+    id: emulator_scherm
+    dimensions:
+      width: 480
+      height: 480
+
+lvgl:
+  buffer_size: 100%
+
+# Koppeling met OpenAmber via UDP in plaats van ESP-NOW (zelfde id en kanalen; er luistert niemand)
+udp:
+
+packet_transport:
+  - platform: udp
+    id: transport_broadcast
+    encryption: ${thermostat_link_key}
+    providers:
+      - name: openamber
+        encryption: ${thermostat_link_key}
+    sensors:
+      - id: pin_out
+        broadcast_id: pin
+      - id: bme_temp
+        broadcast_id: bt
+      - id: bme_hum
+        broadcast_id: bh
+      - id: bme_dewpoint
+        broadcast_id: dp
+      - id: cmd
+        broadcast_id: cmd
+
+time:
+  - platform: host                # klok van de laptop (het schema gebruikt id sntp_time)
+    id: sntp_time
+    timezone: "Europe/Amsterdam"
+
+# Nagebootste hardware: backlight en ledring zonder echte uitgang
+output:
+  - platform: template
+    id: display_led
+    type: float
+    write_action: []
+  - platform: template
+    id: led_uit
+    type: float
+    write_action: []
+
+light:
+  - platform: monochromatic
+    id: backlight
+    output: display_led
+    name: Backlight
+    restore_mode: ALWAYS_ON
+  - platform: monochromatic       # de ledring bestaat hier niet
+    id: status_leds
+    output: led_uit
+    name: "Status LEDs"
+    effects:
+      - lambda:                   # led_update vraagt om dit effect; hier doet het niets
+          name: "Status"
+          update_interval: 1s
+          lambda: ''
+
+# BME680 met vaste voorbeeldwaarden
+sensor:
+  - platform: template
+    id: bme_temp
+    name: "Kamertemperatuur"
+    unit_of_measurement: "°C"
+    update_interval: 15s
+    lambda: 'return 21.3;'
+  - platform: template
+    id: bme_hum
+    name: "Luchtvochtigheid"
+    unit_of_measurement: "%"
+    update_interval: 15s
+    lambda: 'return 48.0;'
+  - platform: template
+    id: bme_pres
+    name: "Luchtdruk"
+    unit_of_measurement: "hPa"
+    update_interval: 60s
+    lambda: 'return 1013.0;'
+  - platform: template
+    id: bme_gas
+    name: "Gasweerstand"
+    update_interval: 60s
+    lambda: 'return 120.0;'
+
+# Draaiknop en drukknop op het toetsenbord
+binary_sensor:
+  - platform: sdl
+    id: toets_links
+    key: SDLK_LEFT
+    on_press:
+      - script.execute:
+          id: knob_step
+          delta: -1
+  - platform: sdl
+    id: toets_rechts
+    key: SDLK_RIGHT
+    on_press:
+      - script.execute:
+          id: knob_step
+          delta: 1
+  - platform: sdl
+    id: toets_enter
+    key: SDLK_RETURN
+    on_press:
+      - script.execute: knob_press_short
+  - platform: sdl
+    id: toets_terug
+    key: SDLK_BACKSPACE
+    on_press:
+      - script.execute: knob_press_long

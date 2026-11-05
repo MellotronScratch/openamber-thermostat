@@ -1,0 +1,1091 @@
+# =====================================================================
+# Thermostaat - scripts die iets met het scherm doen (LVGL)
+# Verwijzen naar widget-id's uit ui_designer.yaml: hernoem je een widget in de
+# Designer, pas het dan ook hier aan.
+#
+# Pagina's (knob_context):
+#   0 = Temperatuur  climate_canvas    setpoint instellen met de knop
+#   1 = Menu         carrousel_canvas  carrousel met loop (7 items, geselecteerde in het midden)
+#   2 = Modus        modus_canvas      Verwarmen / Koelen / Uit kiezen
+#   3 = Koppelen     pair_canvas       OpenAmber kiezen uit de lijst
+#   4 = Overzicht    overzicht_canvas  alleen lezen: temperaturen en compressor
+#   5 = Schema       schema_canvas     nachtverlaging per weekdag instellen
+#   6 = Foutcodes    fout_canvas       eerste actieve fout of waarschuwing met de tekst van OpenAmber
+#   7 = Instellingen inst_canvas       carrousel: ledring, helderheid, thema, sensor, software-update
+#   8 = Update       update_canvas     software-update (de bron op GitHub volgt nog)
+#
+# Knop:  Temperatuur: korte druk = menu          Menu: korte druk = het gekozen item openen
+#        Modus: korte druk = bevestigen          Koppelen: korte druk = bevestigen
+#        Overzicht en Foutcodes: korte druk = terug naar menu
+#        Instellingen: korte druk = wijzigen of klaar
+#        Schema: korte druk = openen of bewaren, lange druk = een stap terug (vanuit het overzicht naar het menu)
+#        Lange druk (elders) = terug naar Temperatuur
+#        Zonder bediening blijft de pagina staan, ook als het scherm uit is: een druk op de knop
+#        brengt je terug op de laatste pagina. Na ${pagina_terug_min} minuten zonder bediening gaat
+#        het scherm terug naar Temperatuur en staat het menu weer op Temperatuur.
+#        (Koppelen blijft open zolang er nog geen OpenAmber is gekozen.)
+#        Het menu opent met het laatst gekozen item in het midden.
+# =====================================================================
+substitutions:
+  pagina_terug_min: "5"           # minuten zonder bediening voordat het scherm terugkeert naar Temperatuur
+
+globals:
+  - id: menu_index                # welk menu-item staat in het midden (0..6)
+    type: int
+    initial_value: '0'
+  - id: modus_keuze               # keuze op de modus-pagina: 0 = Verwarmen, 1 = Koelen, 2 = Uit
+    type: int
+    initial_value: '0'
+  - id: schema_scherm             # schema-pagina: 0 = overzicht, 1 = dag, 2 = waarde wijzigen
+    type: int
+    initial_value: '0'
+  - id: schema_sel                # selectie in het overzicht: 0 = Schema aan/uit, 1-7 = Ma t/m Zo, 8 = terug
+    type: int
+    initial_value: '1'
+  - id: schema_dag                # de geopende dag: 0 = maandag
+    type: int
+    initial_value: '0'
+  - id: schema_veld               # selectie in de dag: 0-3 = de vier waarden, 4 = kopiëren, 5 = terug
+    type: int
+    initial_value: '0'
+  - id: schema_waarde             # de waarde die gewijzigd wordt (minuten of graden)
+    type: float
+    initial_value: '0'
+  - id: inst_sel                  # selectie op de instellingenpagina: 0 = ledring, 1 = helderheid, 2 = thema, 3 = sensor, 4 = update, 5 = terug
+    type: int
+    initial_value: '0'
+  - id: inst_wijzig               # true zolang de helderheid of het thema met de knop wordt gewijzigd
+    type: bool
+    initial_value: 'false'
+  - id: update_sel                # selectie op de update-pagina: 0 = de knop, 1 = terug
+    type: int
+    initial_value: '0'
+  - id: accent_kleur              # accentkleur van het thema (selectie, pil, melding)
+    type: uint32_t
+    initial_value: '0x2EA8FF'
+  - id: ui_klaar                  # true zodra LVGL en de pagina's er zijn (het thema is soms eerder bekend)
+    type: bool
+    initial_value: 'false'
+
+# Kleurthema: achtergrondverloop en accentkleur samen (instellingenpagina, ook in de web-interface)
+select:
+  - platform: template
+    id: thema
+    name: "Thema"
+    options: ["Paars", "Oranje", "Groen", "Blauw", "Grijs"]
+    initial_option: "Paars"
+    optimistic: true
+    restore_value: true
+    entity_category: config
+    on_value:
+      then:
+        - script.execute: thema_toepassen
+
+  # Welke kamertemperatuur het scherm toont: Tr (de sensor van OpenAmber in de kamer) of de eigen BME680.
+  # Alleen voor het scherm; OpenAmber regelt altijd op Tr.
+  - platform: template
+    id: kamer_bron
+    name: "Kamertemperatuur op het scherm"
+    options: ["Tr", "BME680"]
+    initial_option: "BME680"
+    optimistic: true
+    restore_value: true
+    entity_category: config
+    on_value:
+      then:
+        - script.execute: update_room_temp
+
+# Diagonaal kleurverloop voor de achtergrond van alle pagina's. De Designer kent alleen horizontaal
+# en verticaal; daarom staat het hier en wordt het bij het opstarten op de achtergronden gezet.
+# (Niet met transform_rotation draaien: dat maakt het scherm traag en geeft een witte rand.)
+lvgl:
+  gradients:
+    - id: achtergrond_verloop
+      direction: LINEAR
+      linear:                     # van linksboven naar rechtsonder
+        from_x: 0%
+        from_y: 0%
+        to_x: 100%
+        to_y: 100%
+      stops:
+        - color: 0xCE22C8
+          position: 0%
+        - color: 0x1900FF
+          position: 100%
+
+esphome:
+  on_boot:
+    - priority: -101              # nadat LVGL en de pagina's er zijn
+      then:
+        # Diagonaal kleurverloop op de achtergrond van elke pagina
+        - lvgl.widget.update: {id: climate_background, bg_grad: achtergrond_verloop}
+        - lvgl.widget.update: {id: carrousel_background, bg_grad: achtergrond_verloop}
+        - lvgl.widget.update: {id: overzicht_background, bg_grad: achtergrond_verloop}
+        - lvgl.widget.update: {id: modus_background, bg_grad: achtergrond_verloop}
+        - lvgl.widget.update: {id: pair_background, bg_grad: achtergrond_verloop}
+        - lvgl.widget.update: {id: schema_background, bg_grad: achtergrond_verloop}
+        - lvgl.widget.update: {id: fout_background, bg_grad: achtergrond_verloop}
+        - lvgl.widget.update: {id: inst_background, bg_grad: achtergrond_verloop}
+        - lvgl.widget.update: {id: update_background, bg_grad: achtergrond_verloop}
+        # Icoonfonts met alle glyphs die het script nodig heeft (zie ui_fonts.yaml)
+        - lvgl.widget.update: {id: carrousel_menu_icon_1, text_font: menu_icons_28}
+        - lvgl.widget.update: {id: carrousel_menu_icon_2, text_font: menu_icons_33}
+        - lvgl.widget.update: {id: carrousel_menu_icon_3, text_font: menu_icons_40}
+        - lvgl.widget.update: {id: carrousel_menu_icon_4, text_font: menu_icons_33}
+        - lvgl.widget.update: {id: carrousel_menu_icon_5, text_font: menu_icons_28}
+        - lvgl.widget.update: {id: climate_icon_heatcool, text_font: menu_icons_40}
+        - lvgl.widget.update: {id: modus_icon, text_font: modus_icons_80}
+        - lvgl.widget.update: {id: fout_icon, text_font: fout_icons_80}
+        - globals.set:
+            id: ui_klaar
+            value: 'true'
+        - script.execute: thema_toepassen
+        - script.execute: menu_render
+        - script.execute: refresh_setpoint_ui
+        - script.execute: update_room_temp
+        - script.execute: update_status_icons
+
+script:
+  # ---------------------------------------------------------------------
+  # Temperatuurpagina: statusiconen, waarschuwing en foutcode
+  # ---------------------------------------------------------------------
+  - id: update_status_icons       # zet symbool, kleur en zichtbaarheid van de iconen en de waarschuwing
+    mode: restart
+    then:
+      - lambda: |-
+          auto on = [](binary_sensor::BinarySensor *b) { return b->has_state() && b->state; };
+          auto toon = [](lv_obj_t *o, bool zichtbaar) {
+            if (zichtbaar) lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
+            else           lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+          };
+          auto kleur = [](lv_obj_t *o, uint32_t hex) { lv_obj_set_style_text_color(o, lv_color_hex(hex), 0); };
+
+          bool link  = id(link_ok);
+          bool twa   = on(id(remote_twa));
+          bool bezig = on(id(remote_da)) || on(id(remote_twp)) || on(id(remote_twv));
+          bool lega  = twa && on(id(remote_lega));
+          float cf   = id(rx_cf).state;                       // NaN zolang er niets is ontvangen
+          bool draait = link && cf > 0.5f;
+
+          // Backupelement (bliksem)
+          toon(id(climate_icon_backupheater), link && on(id(remote_bu)));
+
+          // Compressor draait (warmtepomp-icoon)
+          toon(id(climate_icon_compressor), draait);
+
+          // Op dezelfde plek: legionellarun (bacterie) gaat voor tapwater (kraan).
+          // Het kraantje is blauw zolang er tapwater wordt gemaakt, anders gedimd.
+          toon(id(climate_icon_legionella), link && lega);
+          kleur(id(climate_icon_legionella), 0x2ECC71);
+          toon(id(climate_icon_tapwater), link && twa && !lega);
+          kleur(id(climate_icon_tapwater), bezig ? 0x2EA8FF : 0x4A4F5C);
+
+          // Verwarmen / koelen / ontdooien / standby: een icoon, met deze voorrang
+          if (!link) {
+            toon(id(climate_icon_heatcool), false);
+          } else {
+            const char *symbool;
+            uint32_t k;
+            if (on(id(remote_dfr)))      { symbool = "\U000F12CB"; k = 0x00BCD4; }   // ontdooien
+            else if (on(id(remote_cd)))  { symbool = "\U000F0717"; k = 0x2EA8FF; }   // koelen
+            else if (on(id(remote_wv)))  { symbool = "\U000F0238"; k = 0xFF5100; }   // verwarmen
+            else                         { symbool = "\U000F0906"; k = 0x4A4F5C; }   // standby
+            lv_label_set_text(id(climate_icon_heatcool), symbool);
+            kleur(id(climate_icon_heatcool), k);
+            toon(id(climate_icon_heatcool), true);
+          }
+
+          // Foutcode omzetten naar tekst. 1xx = P, 2xx = F, 3xx = E, 4xx = overige (zie thermostat_link.yaml).
+          // De teksten zijn ingekort uit de namen op OpenAmber, zodat ze op het scherm passen.
+          auto fout_tekst = [](int c) -> std::string {
+            struct E { int code; const char *tekst; };
+            static const E tabel[] = {
+              {101, "Bedrijfstroom"}, {102, "Bedrijfstroom"}, {103, "Compressorstart"},
+              {105, "Hoge druk"}, {106, "Laag drukverschil"}, {107, "Voorverwarming"},
+              {108, "Sensor persgasdruk"}, {109, "Sensor verdamper"}, {110, "Voedingsspanning"},
+              {111, "Compr. begrenzing"}, {112, "Compr. begrenzing"}, {113, "Laag drukverschil"},
+              {201, "Sensor buiten"}, {202, "Sensor verdamper"}, {203, "Sensor persgas"},
+              {204, "Sensor zuiggas"}, {205, "Zuiggasdruk"}, {206, "Persgasdruk"},
+              {207, "Hogedrukbeveiliging"}, {209, "Ventilatormotor"}, {210, "Ventilatormotor"},
+              {216, "Sensor aanvoer"}, {217, "Sensor retour"}, {218, "Sensor condensor"},
+              {301, "Communicatie PCB"}, {302, "Inverter communicatie"}, {303, "Bedrijfsstroom"},
+              {304, "Bedrijfsstroom"}, {305, "Storing inverter"}, {306, "Storing VCD-module"},
+              {307, "Voedingsspanning"}, {308, "EEPROM"},
+              {401, "Pomp start timeout"}, {402, "Compressor start"}, {403, "Pomp stop timeout"},
+              {404, "Modbus timeout"}, {405, "3-wegklep"}, {406, "Failsafe binnendeel"},
+              {407, "Failsafe communicatie"}, {408, "EEPROM binnendeel"}, {409, "Pompalarm"},
+            };
+            const char *t = nullptr;
+            for (const auto &e : tabel) if (e.code == c) { t = e.tekst; break; }
+            char letter = (c >= 100 && c < 200) ? 'P' : (c >= 200 && c < 300) ? 'F' : (c >= 300 && c < 400) ? 'E' : 0;
+            std::string s;
+            if (letter) {
+              char b[8];
+              snprintf(b, sizeof(b), "%c%02d", letter, c % 100);
+              s = b;
+              if (t) { s += " - "; s += t; }
+            } else {
+              s = t ? t : "Storing";
+            }
+            return s;
+          };
+
+          // Waarschuwing: geen verbinding gaat voor fout, fout voor waarschuwing, dan condens
+          int ec = std::isnan(id(rx_ec).state) ? 0 : (int) lroundf(id(rx_ec).state);
+          std::string tekst;
+          uint32_t k = 0xFF5100;
+          bool melding = true;
+          if (!link)                          { tekst = "Geen verbinding"; k = 0x6B7080; }
+          else if (on(id(remote_err)))        { tekst = ec > 0 ? fout_tekst(ec) : "Storing"; k = 0xFF2020; }
+          else if (on(id(remote_warn)))       { tekst = ec > 0 ? fout_tekst(ec) : "Waarschuwing"; k = 0xFF5100; }
+          else if (id(condens_warn))          { tekst = "Condensgevaar"; k = 0x2EA8FF; }
+          else                                { melding = false; }
+          if (melding) {
+            lv_label_set_text(id(climate_label_warning), tekst.c_str());
+            kleur(id(climate_label_warning), k);
+            kleur(id(climate_icon_warning), k);
+          }
+          toon(id(climate_label_warning), melding);
+          toon(id(climate_icon_warning), melding);
+
+  # Kamertemperatuur onderaan op de temperatuurpagina: Tr van OpenAmber of de eigen BME680 (kamer_bron)
+  - id: update_room_temp
+    then:
+      - lvgl.label.update:
+          id: climate_label_temp
+          text: !lambda |-
+            bool tr = id(kamer_bron).active_index().value_or(1) == 0;
+            float x = tr ? id(room_temperature).state : id(bme_temp).state;
+            if (std::isnan(x)) return std::string("--");
+            std::string s = str_sprintf("%.1f°", x);
+            for (char &c : s) if (c == '.') c = ',';
+            return s;
+
+  # Doeltemperatuur van de gekozen modus (koelen: hoog setpoint, anders laag), de modus eronder
+  # en de vulling van de ring (ui_tikken.yaml; het bereik van de ring staat daar per modus)
+  - id: refresh_setpoint_ui
+    then:
+      - script.execute:
+          id: tikken_zetten
+          frac: !lambda |-
+            bool koelen = (id(mode_code) == 2);
+            float sp = koelen ? id(target_high).state : id(target_low).state;
+            float lo = koelen ? ${ring_min_koelen} : ${ring_min_verwarmen};
+            float hi = koelen ? ${ring_max_koelen} : ${ring_max_verwarmen};
+            if (std::isnan(sp)) return 0.0f;
+            return (sp - lo) / (hi - lo);
+      - lvgl.label.update:
+          id: climate_label_setpoint
+          text: !lambda |-
+            float sp = (id(mode_code) == 2) ? id(target_high).state : id(target_low).state;
+            if (std::isnan(sp)) return std::string("--");
+            std::string s = str_sprintf("%.1f", sp);
+            for (char &c : s) if (c == '.') c = ',';
+            return s;
+      - lvgl.label.update:
+          id: climate_label_instelling
+          text: !lambda |-
+            if (id(mode_code) == 1) return std::string("Verwarmen");
+            if (id(mode_code) == 2) return std::string("Koelen");
+            return std::string("Uit");
+
+  # ---------------------------------------------------------------------
+  # Overzichtspagina: alleen lezen
+  # ---------------------------------------------------------------------
+  - id: update_overzicht
+    then:
+      - lambda: |-
+          // Kleur uit het verloop van de ring (blauw -> roze), laag bij lo en hoog bij hi
+          auto verloop = [](float v, float lo, float hi) -> lv_color_t {
+            if (std::isnan(v)) return lv_color_hex(0x6B7080);
+            float f = (v - lo) / (hi - lo);
+            if (f < 0) f = 0;
+            if (f > 1) f = 1;
+            return lv_color_make((uint8_t) (0x2E + f * (0xFF - 0x2E)),
+                                 (uint8_t) (0xA8 + f * (0x4D - 0xA8)),
+                                 (uint8_t) (0xFF + f * (0x7E - 0xFF)));
+          };
+          auto graden = [](float v, int dec) -> std::string {
+            if (std::isnan(v)) return std::string("--");
+            char b[16];
+            snprintf(b, sizeof(b), dec == 0 ? "%.0f°" : "%.1f°", v);
+            std::string s = b;
+            for (char &c : s) if (c == '.') c = ',';
+            return s;
+          };
+          float ta = id(temperature_outside_ta).state;
+          float tuo = id(outlet_temperature_tuo).state;
+          float tui = id(inlet_temperature_tui).state;
+          float tw = id(dhw_temperature_tw_sensor).state;
+          float cf = id(rx_cf).state;
+
+          // Aanvoer/retour: bereik volgt de gewenste aanvoertemperatuur (stooklijn) van OpenAmber.
+          // Verwarmen: blauw bij wsp-15, roze bij wsp. Koelen: blauw bij wsp, roze bij wsp+15.
+          float wsp = id(rx_wsp).state;
+          bool koelen = (id(mode_code) == 2);
+          float lo, hi;
+          if (std::isnan(wsp)) { lo = koelen ? 10 : 20; hi = koelen ? 30 : 55; }
+          else if (koelen)     { lo = wsp;      hi = wsp + 15; }
+          else                 { lo = wsp - 15; hi = wsp; }
+          if (hi <= lo) hi = lo + 1;
+
+          lv_label_set_text(id(overzicht_label_buiten_value), graden(ta, 0).c_str());
+          lv_obj_set_style_text_color(id(overzicht_label_buiten_value), verloop(ta, -10, 40), 0);
+          lv_label_set_text(id(overzicht_label_aanvoer_value), graden(tuo, 1).c_str());
+          lv_obj_set_style_text_color(id(overzicht_label_aanvoer_value), verloop(tuo, lo, hi), 0);
+          lv_label_set_text(id(overzicht_label_retour_value), graden(tui, 1).c_str());
+          lv_obj_set_style_text_color(id(overzicht_label_retour_value), verloop(tui, lo, hi), 0);
+          lv_label_set_text(id(overzicht_label_deltat_value), graden(tuo - tui, 1).c_str());   // NaN als een van de twee ontbreekt
+          lv_label_set_text(id(overzicht_label_tapwater_value), graden(tw, 0).c_str());
+          lv_obj_set_style_text_color(id(overzicht_label_tapwater_value), verloop(tw, 30, 60), 0);
+          char hz[16];
+          if (std::isnan(cf)) snprintf(hz, sizeof(hz), "--");
+          else                snprintf(hz, sizeof(hz), "%d Hz", (int) lroundf(cf));
+          lv_label_set_text(id(overzicht_label_compfreq_value), hz);
+
+  # ---------------------------------------------------------------------
+  # Menu: carrousel met loop. Zeven items in vijf rijen, de geselecteerde staat in rij 3.
+  # De rijen schuiven niet echt: bij elke klik krijgen ze een andere tekst en icoon.
+  # ---------------------------------------------------------------------
+  - id: menu_render
+    then:
+      - lambda: |-
+          static const char *namen[7] = {"Temperatuur", "Overzicht", "Schema", "Foutcodes", "Modus", "Koppelen", "Instellingen"};
+          static const char *iconen[7] = {"\U000F0393", "\U000F0A1D", "\U000F00F0", "\U000F0026", "\U000F0493", "\U000F0337", "\U000F062E"};
+          lv_obj_t *lbl[5] = {id(carrousel_menu_label_1), id(carrousel_menu_label_2), id(carrousel_menu_label_3),
+                              id(carrousel_menu_label_4), id(carrousel_menu_label_5)};
+          lv_obj_t *ico[5] = {id(carrousel_menu_icon_1), id(carrousel_menu_icon_2), id(carrousel_menu_icon_3),
+                              id(carrousel_menu_icon_4), id(carrousel_menu_icon_5)};
+          for (int r = 0; r < 5; r++) {
+            int k = ((id(menu_index) + r - 2) % 7 + 7) % 7;     // rij 3 (r = 2) is het gekozen item
+            lv_label_set_text(lbl[r], namen[k]);
+            lv_label_set_text(ico[r], iconen[k]);
+          }
+
+  # Het gekozen menu-item openen
+  - id: menu_open
+    then:
+      - lambda: |-
+          switch (id(menu_index)) {
+            case 0: id(show_home).execute(); break;
+            case 1: id(show_overzicht).execute(); break;
+            case 2: id(show_schema).execute(); break;
+            case 3: id(show_fout).execute(); break;
+            case 4: id(show_modus).execute(); break;
+            case 5: id(show_pair).execute(); break;
+            case 6: id(show_inst).execute(); break;
+          }
+
+  # ---------------------------------------------------------------------
+  # Modus-pagina: draaien kiest, korte druk bevestigt
+  # ---------------------------------------------------------------------
+  - id: modus_render
+    then:
+      - lambda: |-
+          const char *symbool, *tekst;
+          uint32_t k;
+          switch (id(modus_keuze)) {
+            case 0:  symbool = "\U000F0238"; tekst = "Verwarmen"; k = 0xFF5100; break;
+            case 1:  symbool = "\U000F0717"; tekst = "Koelen";    k = 0x2EA8FF; break;
+            default: symbool = "\U000F0906"; tekst = "Uit";       k = 0x6B7080; break;
+          }
+          lv_label_set_text(id(modus_icon), symbool);
+          lv_obj_set_style_text_color(id(modus_icon), lv_color_hex(k), 0);
+          lv_label_set_text(id(modus_label), tekst);
+
+  - id: modus_apply
+    then:
+      - lambda: |-
+          // Alleen versturen als de keuze anders is dan de huidige modus
+          static const char *opties[3] = {"Verwarmen", "Koelen", "Uit"};
+          static const int codes[3] = {1, 2, 0};
+          int keuze = id(modus_keuze);
+          if (codes[keuze] != id(mode_code)) id(hp_mode).make_call().set_option(opties[keuze]).perform();
+      - script.execute: show_home
+
+  # ---------------------------------------------------------------------
+  # Pagina's wisselen en de draaiknop de bijbehorende context geven
+  # ---------------------------------------------------------------------
+  - id: show_home
+    then:
+      - globals.set:
+          id: knob_context
+          value: '0'
+      - lvgl.page.show: climate_canvas
+
+  - id: show_menu
+    then:
+      - globals.set:
+          id: knob_context
+          value: '1'
+      - script.execute: menu_render
+      - lvgl.page.show: carrousel_canvas
+
+  - id: show_overzicht
+    then:
+      - globals.set:
+          id: knob_context
+          value: '4'
+      - script.execute: update_overzicht
+      - lvgl.page.show: overzicht_canvas
+
+  - id: show_modus
+    then:
+      - globals.set:
+          id: knob_context
+          value: '2'
+      - lambda: |-
+          id(modus_keuze) = (id(mode_code) == 1) ? 0 : (id(mode_code) == 2) ? 1 : 2;
+      - script.execute: modus_render
+      - lvgl.page.show: modus_canvas
+
+  - id: show_pair
+    then:
+      - globals.set:
+          id: knob_context
+          value: '3'
+      - lvgl.page.show: pair_canvas
+      - script.execute: pair_refresh
+
+  - id: show_fout
+    then:
+      - globals.set:
+          id: knob_context
+          value: '6'
+      - script.execute: fout_render
+      - lvgl.page.show: fout_canvas
+
+  - id: show_inst
+    then:
+      - lambda: |-
+          if (id(knob_context) != 8) id(inst_sel) = 0;   // terug van de update-pagina: Software-update blijft gekozen
+          id(inst_wijzig) = false;
+      - globals.set:
+          id: knob_context
+          value: '7'
+      - script.execute: inst_render
+      - lvgl.page.show: inst_canvas
+
+  - id: show_update
+    then:
+      - globals.set:
+          id: knob_context
+          value: '8'
+      - lambda: |-
+          id(update_sel) = 0;
+          // Geïnstalleerde firmware: datum en tijd van het compileren
+          char b[Application::BUILD_TIME_STR_SIZE];
+          App.get_build_time_string(b);
+          lv_label_set_text(id(update_huidig), b);
+          lv_label_set_text(id(update_nieuw), "--");
+          lv_label_set_text(id(update_status), "");
+      - script.execute: update_render
+      - lvgl.page.show: update_canvas
+
+  - id: show_schema
+    then:
+      - globals.set:
+          id: knob_context
+          value: '5'
+      - lambda: |-
+          id(schema_scherm) = 0;
+          id(schema_sel) = 1;
+          lv_obj_add_flag(id(schema_toast), LV_OBJ_FLAG_HIDDEN);
+      - script.execute: schema_render
+      - lvgl.page.show: schema_canvas
+
+  # Na ${pagina_terug_min} minuten zonder bediening terug naar Temperatuur, met het menu op Temperatuur.
+  # Het scherm zelf gaat eerder uit (60 s); de pagina blijft dan staan tot de timeout. Koppelen blijft
+  # open zolang er nog geen OpenAmber is gekozen.
+  - id: page_timeout
+    mode: restart
+    then:
+      - delay: ${pagina_terug_min}min
+      - lambda: |-
+          id(menu_index) = 0;
+          bool geen_code = id(pair_code).state.empty();
+          if (id(knob_context) != 0 && !(id(knob_context) == 3 && geen_code)) id(show_home).execute();
+
+  # ---------------------------------------------------------------------
+  # Koppelen: lijst met gevonden OpenAmbers bijwerken (elke 2 s zolang de pagina open is)
+  # ---------------------------------------------------------------------
+  - id: pair_refresh
+    mode: restart
+    then:
+      - lambda: |-
+          // Codes die langer dan 30 s niet meer zijn gehoord, verdwijnen uit de lijst
+          uint32_t now = millis();
+          for (int i = (int) id(found_codes).size() - 1; i >= 0; i--) {
+            if (now - id(found_seen)[i] > 30000) {
+              id(found_codes).erase(id(found_codes).begin() + i);
+              id(found_seen).erase(id(found_seen).begin() + i);
+            }
+          }
+          // Opties voor de roller: elke gevonden code op een eigen regel, onderaan Annuleren
+          std::string opts;
+          for (int c : id(found_codes)) {
+            char b[8];
+            snprintf(b, sizeof(b), "%06X", c);
+            opts += b;
+            opts += "\n";
+          }
+          opts += "Annuleren";
+          // Alleen bijwerken als de lijst verandert, anders springt de selectie steeds terug
+          static std::string last;
+          lv_obj_t *r = id(pair_roller)->obj;
+          if (opts != last) {
+            int n = (int) id(found_codes).size() + 1;
+            int sel = (int) lv_roller_get_selected(r);
+            lv_roller_set_options(r, opts.c_str(), LV_ROLLER_MODE_NORMAL);
+            if (sel > n - 1) sel = n - 1;
+            lv_roller_set_selected(r, sel, LV_ANIM_OFF);
+            last = opts;
+          }
+          bool leeg = id(found_codes).empty();
+          lv_label_set_text(id(pair_label_status), leeg ? "Zoeken naar OpenAmber..." : "Kies je OpenAmber");
+          // Draaiend bolletje alleen zolang er nog niets is gevonden
+          if (leeg) lv_obj_clear_flag(id(pair_spinner), LV_OBJ_FLAG_HIDDEN);
+          else      lv_obj_add_flag(id(pair_spinner), LV_OBJ_FLAG_HIDDEN);
+
+  # Keuze in de lijst bevestigen: code bewaren (of annuleren) en terug naar Temperatuur
+  - id: pair_confirm
+    then:
+      - lambda: |-
+          int sel = (int) lv_roller_get_selected(id(pair_roller)->obj);
+          int n = (int) id(found_codes).size();
+          if (sel >= 0 && sel < n) {                  // de laatste regel is Annuleren
+            char b[8];
+            snprintf(b, sizeof(b), "%06X", id(found_codes)[sel]);
+            id(pair_code).make_call().set_value(b).perform();
+          }
+      - script.execute: show_home
+
+  # ---------------------------------------------------------------------
+  # Schema-pagina: drie schermen op dezelfde pagina (schema_scherm)
+  #   0 = Overzicht   rijen: Schema aan/uit, Ma t/m Zo, Terug    druk = aan/uit, dag openen of terug naar het menu
+  #   1 = Dag         rijen: Begin dag, Begin nacht, Temp. dag, Temp. nacht, Kopieer naar alle dagen, Terug
+  #   2 = Wijzigen    draaien verandert de waarde, druk = bewaren, lang = niet bewaren
+  # Vijf rijen, de geselecteerde staat in rij 3. Net als het menu schuiven de rijen niet echt:
+  # bij elke klik krijgen ze andere inhoud. De waarden staan in schema.yaml.
+  # ---------------------------------------------------------------------
+  - id: schema_render
+    then:
+      - lambda: |-
+          static const char *kort[7] = {"Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"};
+          static const char *namen[7] = {"MAANDAG", "DINSDAG", "WOENSDAG", "DONDERDAG", "VRIJDAG", "ZATERDAG", "ZONDAG"};
+          static const char *velden[4] = {"Begin dag", "Begin nacht", "Temp. dag", "Temp. nacht"};
+          esphome::datetime::TimeEntity *ds[7] = {id(schema_ma_dag_start), id(schema_di_dag_start), id(schema_wo_dag_start), id(schema_do_dag_start), id(schema_vr_dag_start), id(schema_za_dag_start), id(schema_zo_dag_start)};
+          esphome::datetime::TimeEntity *ns[7] = {id(schema_ma_nacht_start), id(schema_di_nacht_start), id(schema_wo_nacht_start), id(schema_do_nacht_start), id(schema_vr_nacht_start), id(schema_za_nacht_start), id(schema_zo_nacht_start)};
+          esphome::number::Number *td[7] = {id(schema_ma_dag_temp), id(schema_di_dag_temp), id(schema_wo_dag_temp), id(schema_do_dag_temp), id(schema_vr_dag_temp), id(schema_za_dag_temp), id(schema_zo_dag_temp)};
+          esphome::number::Number *tn[7] = {id(schema_ma_nacht_temp), id(schema_di_nacht_temp), id(schema_wo_nacht_temp), id(schema_do_nacht_temp), id(schema_vr_nacht_temp), id(schema_za_nacht_temp), id(schema_zo_nacht_temp)};
+          lv_obj_t *rij[5]  = {id(schema_rij_1), id(schema_rij_2), id(schema_rij_3), id(schema_rij_4), id(schema_rij_5)};
+          lv_obj_t *naam[5] = {id(schema_rij_1_naam), id(schema_rij_2_naam), id(schema_rij_3_naam), id(schema_rij_4_naam), id(schema_rij_5_naam)};
+          lv_obj_t *bar[5]  = {id(schema_rij_1_bar), id(schema_rij_2_bar), id(schema_rij_3_bar), id(schema_rij_4_bar), id(schema_rij_5_bar)};
+          lv_obj_t *dagt[5] = {id(schema_rij_1_dagtemp), id(schema_rij_2_dagtemp), id(schema_rij_3_dagtemp), id(schema_rij_4_dagtemp), id(schema_rij_5_dagtemp)};
+          lv_obj_t *nacht[5] = {id(schema_rij_1_nachttemp), id(schema_rij_2_nachttemp), id(schema_rij_3_nachttemp), id(schema_rij_4_nachttemp), id(schema_rij_5_nachttemp)};
+          lv_obj_t *waarde[5] = {id(schema_rij_1_waarde), id(schema_rij_2_waarde), id(schema_rij_3_waarde), id(schema_rij_4_waarde), id(schema_rij_5_waarde)};
+
+          auto toon = [](lv_obj_t *o, bool aan) {
+            if (aan) lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+          };
+          auto tijd = [](char *buf, int m) { snprintf(buf, 12, "%02d:%02d", m / 60, m % 60); };
+          auto temp = [](char *buf, float t) { int t10 = (int) lroundf(t * 10); snprintf(buf, 12, "%d,%d°", t10 / 10, t10 % 10); };
+          auto pil = [](lv_obj_t *o, uint32_t achter, uint32_t tekst) {   // waarde met gekleurde achtergrond
+            lv_obj_set_style_bg_color(o, lv_color_hex(achter), 0);
+            lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+            lv_obj_set_style_text_color(o, lv_color_hex(tekst), 0);
+            lv_obj_align(o, LV_ALIGN_RIGHT_MID, -22, 0);
+          };
+          auto kaal = [](lv_obj_t *o, uint32_t tekst, lv_align_t waar, int x) {   // waarde zonder achtergrond
+            lv_obj_set_style_bg_opa(o, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_text_color(o, lv_color_hex(tekst), 0);
+            lv_obj_align(o, waar, x, 0);
+          };
+
+          int scherm = id(schema_scherm);
+          int dag = id(schema_dag);
+          bool aan = id(schema_actief).state;
+          int sel = (scherm == 0) ? id(schema_sel) : id(schema_veld);
+          int aantal = (scherm == 0) ? 9 : 6;
+          char buf[12];
+
+          for (int r = 0; r < 5; r++) {
+            int i = sel + r - 2;                     // rij 3 (r = 2) is de geselecteerde
+            if (i < 0 || i >= aantal) { toon(rij[r], false); continue; }
+            toon(rij[r], true);
+            toon(naam[r], true);
+            lv_obj_set_style_text_color(naam[r], lv_color_hex(0xE8EAF0), 0);
+
+            if (i == aantal - 1) {                   // Terug (laatste regel)
+              toon(naam[r], false); toon(bar[r], false); toon(dagt[r], false); toon(nacht[r], false); toon(waarde[r], true);
+              lv_label_set_text(waarde[r], "Terug");
+              kaal(waarde[r], 0xE8EAF0, LV_ALIGN_CENTER, 0);
+            } else if (scherm == 0 && i == 0) {      // Schema aan/uit
+              lv_label_set_text(naam[r], "Schema");
+              toon(bar[r], false); toon(dagt[r], false); toon(nacht[r], false); toon(waarde[r], true);
+              lv_label_set_text(waarde[r], aan ? "Aan" : "Uit");
+              if (aan) pil(waarde[r], id(accent_kleur), 0x0C0D10); else pil(waarde[r], 0x30333B, 0xC4C8D2);
+            } else if (scherm == 0) {                // een dag: balk en twee temperaturen
+              int d = i - 1;
+              int a = ds[d]->hour * 60 + ds[d]->minute;
+              int b = ns[d]->hour * 60 + ns[d]->minute;
+              lv_label_set_text(naam[r], kort[d]);
+              toon(bar[r], true); toon(dagt[r], true); toon(nacht[r], true); toon(waarde[r], false);
+              lv_bar_set_value(bar[r], std::max(a, b), LV_ANIM_OFF);
+              lv_bar_set_start_value(bar[r], std::min(a, b), LV_ANIM_OFF);
+              lv_obj_set_style_opa(bar[r], aan ? LV_OPA_COVER : 89, 0);   // schema uit: balk gedimd
+              temp(buf, td[d]->state); lv_label_set_text(dagt[r], buf);
+              temp(buf, tn[d]->state); lv_label_set_text(nacht[r], buf);
+            } else if (i < 4) {                      // een veld van de gekozen dag
+              bool wijzig = (scherm == 2 && r == 2);
+              float v;
+              if (wijzig) v = id(schema_waarde);
+              else if (i == 0) v = ds[dag]->hour * 60 + ds[dag]->minute;
+              else if (i == 1) v = ns[dag]->hour * 60 + ns[dag]->minute;
+              else if (i == 2) v = td[dag]->state;
+              else v = tn[dag]->state;
+              if (i < 2) tijd(buf, (int) v); else temp(buf, v);
+              lv_label_set_text(naam[r], velden[i]);
+              toon(bar[r], false); toon(dagt[r], false); toon(nacht[r], false); toon(waarde[r], true);
+              lv_label_set_text(waarde[r], buf);
+              if (wijzig) pil(waarde[r], id(accent_kleur), 0x0C0D10);
+              else kaal(waarde[r], 0xE8EAF0, LV_ALIGN_RIGHT_MID, -6);   // -6: de label heeft zelf 16 px padding
+            } else {                                 // Kopieer naar alle dagen
+              toon(naam[r], false); toon(bar[r], false); toon(dagt[r], false); toon(nacht[r], false); toon(waarde[r], true);
+              lv_label_set_text(waarde[r], "Kopieer naar alle dagen");
+              kaal(waarde[r], id(accent_kleur), LV_ALIGN_CENTER, 0);
+            }
+          }
+
+          lv_label_set_text(id(schema_title), scherm == 0 ? "SCHEMA" : namen[dag]);
+          static const char *hints[3] = {"draai: kiezen • druk: openen", "draai: kiezen • druk: wijzigen",
+                                         "draai: wijzigen • druk: bewaren"};
+          lv_label_set_text(id(schema_hint), hints[scherm]);
+
+  # Draaien: kiezen in het overzicht en in de dag, of de waarde veranderen
+  # (tijd per 15 minuten en rond over middernacht, temperatuur per 0,5 graad van 15 tot 25)
+  - id: schema_draai
+    parameters:
+      delta: int
+    then:
+      - lambda: |-
+          if (id(schema_scherm) == 0) {
+            id(schema_sel) = std::max(0, std::min(8, id(schema_sel) + delta));
+          } else if (id(schema_scherm) == 1) {
+            id(schema_veld) = std::max(0, std::min(5, id(schema_veld) + delta));
+          } else if (id(schema_veld) < 2) {
+            id(schema_waarde) = (float) ((((int) id(schema_waarde) + delta * 15) % 1440 + 1440) % 1440);
+          } else {
+            id(schema_waarde) = std::max(15.0f, std::min(25.0f, id(schema_waarde) + delta * 0.5f));
+          }
+      - script.execute: schema_render
+
+  # Korte druk: openen, aan/uit zetten, kopiëren of de gewijzigde waarde bewaren
+  - id: schema_druk
+    then:
+      - lambda: |-
+          esphome::datetime::TimeEntity *ds[7] = {id(schema_ma_dag_start), id(schema_di_dag_start), id(schema_wo_dag_start), id(schema_do_dag_start), id(schema_vr_dag_start), id(schema_za_dag_start), id(schema_zo_dag_start)};
+          esphome::datetime::TimeEntity *ns[7] = {id(schema_ma_nacht_start), id(schema_di_nacht_start), id(schema_wo_nacht_start), id(schema_do_nacht_start), id(schema_vr_nacht_start), id(schema_za_nacht_start), id(schema_zo_nacht_start)};
+          esphome::number::Number *td[7] = {id(schema_ma_dag_temp), id(schema_di_dag_temp), id(schema_wo_dag_temp), id(schema_do_dag_temp), id(schema_vr_dag_temp), id(schema_za_dag_temp), id(schema_zo_dag_temp)};
+          esphome::number::Number *tn[7] = {id(schema_ma_nacht_temp), id(schema_di_nacht_temp), id(schema_wo_nacht_temp), id(schema_do_nacht_temp), id(schema_vr_nacht_temp), id(schema_za_nacht_temp), id(schema_zo_nacht_temp)};
+          int dag = id(schema_dag);
+          bool gewijzigd = false;
+
+          if (id(schema_scherm) == 0) {
+            if (id(schema_sel) == 0) {
+              id(schema_actief).toggle();
+            } else if (id(schema_sel) == 8) {        // terug naar het menu
+              id(show_menu).execute();
+            } else {
+              id(schema_dag) = id(schema_sel) - 1;
+              id(schema_veld) = 0;
+              id(schema_scherm) = 1;
+            }
+          } else if (id(schema_scherm) == 1) {
+            int v = id(schema_veld);
+            if (v == 5) {                            // terug naar het overzicht
+              id(schema_scherm) = 0;
+            } else if (v == 4) {                     // deze dag naar alle dagen kopiëren
+              for (int d = 0; d < 7; d++) {
+                if (d == dag) continue;
+                ds[d]->make_call().set_time(ds[dag]->hour, ds[dag]->minute, 0).perform();
+                ns[d]->make_call().set_time(ns[dag]->hour, ns[dag]->minute, 0).perform();
+                td[d]->make_call().set_value(td[dag]->state).perform();
+                tn[d]->make_call().set_value(tn[dag]->state).perform();
+              }
+              id(schema_melding).execute("Gekopieerd naar alle dagen");
+              gewijzigd = true;
+            } else {                                 // de huidige waarde gaan wijzigen
+              if (v == 0) id(schema_waarde) = ds[dag]->hour * 60 + ds[dag]->minute;
+              else if (v == 1) id(schema_waarde) = ns[dag]->hour * 60 + ns[dag]->minute;
+              else if (v == 2) id(schema_waarde) = td[dag]->state;
+              else id(schema_waarde) = tn[dag]->state;
+              id(schema_scherm) = 2;
+            }
+          } else {                                   // bewaren
+            int v = id(schema_veld);
+            int m = (int) id(schema_waarde);
+            if (v == 0) ds[dag]->make_call().set_time(m / 60, m % 60, 0).perform();
+            else if (v == 1) ns[dag]->make_call().set_time(m / 60, m % 60, 0).perform();
+            else if (v == 2) td[dag]->make_call().set_value(id(schema_waarde)).perform();
+            else tn[dag]->make_call().set_value(id(schema_waarde)).perform();
+            id(schema_scherm) = 1;
+            id(schema_melding).execute("Bewaard");
+            gewijzigd = true;
+          }
+
+          // Schema veranderd: meteen het setpoint van de huidige periode opnieuw bepalen
+          if (gewijzigd) {
+            id(schema_periode) = -1;
+            id(schema_toepassen).execute();
+          }
+      - script.execute: schema_render
+
+  # Lange druk: niet bewaren, terug naar het overzicht, of terug naar het menu
+  - id: schema_terug
+    then:
+      - lambda: |-
+          if (id(schema_scherm) == 2) {
+            id(schema_scherm) = 1;
+            id(schema_melding).execute("Niet bewaard");
+          } else if (id(schema_scherm) == 1) {
+            id(schema_scherm) = 0;
+          } else {
+            id(show_menu).execute();
+          }
+      - script.execute: schema_render
+
+  # Korte melding boven de hint, verdwijnt na 2 seconden
+  - id: schema_melding
+    mode: restart
+    parameters:
+      tekst: string
+    then:
+      - lambda: |-
+          lv_label_set_text(id(schema_toast), tekst.c_str());
+          lv_obj_clear_flag(id(schema_toast), LV_OBJ_FLAG_HIDDEN);
+      - delay: 2s
+      - lambda: 'lv_obj_add_flag(id(schema_toast), LV_OBJ_FLAG_HIDDEN);'
+
+  # ---------------------------------------------------------------------
+  # Foutcodes-pagina: de eerste actieve fout of waarschuwing (kanaal ec van OpenAmber) met de
+  # tekst uit OpenAmber. Wordt elke 2 s bijgewerkt zolang de pagina open is.
+  # ---------------------------------------------------------------------
+  - id: fout_render
+    then:
+      - lambda: |-
+          struct F { int c; const char *code; const char *tekst; bool waarsch; };
+          static const F tabel[] = {
+            {103, "P03", "Storing compressorstart", false},
+            {105, "P05", "Storing compressor - hogedrukbeveiliging", false},
+            {108, "P08", "Storing sensor persgasdruk", false},
+            {109, "P09", "Storing sensor verdamper/condensor buitendeel", false},
+            {110, "P10", "Voedingsspanning te hoog of te laag", false},
+            {201, "F01", "Storing buitentemperatuursensor", false},
+            {202, "F02", "Storing sensor verdamper/condensor buitendeel", false},
+            {203, "F03", "Storing persgas temp sensor", false},
+            {204, "F04", "Storing zuiggas temp sensor", false},
+            {205, "F05", "Storing zuiggas druk sensor", false},
+            {206, "F06", "Storing sensor persgasdruk", false},
+            {207, "F07", "Storing hogedrukbeveiliging", false},
+            {209, "F09", "Storing ventilatormotor DC", false},
+            {210, "F10", "Storing ventilatormotor DC", false},
+            {213, "F13", "Storing sensor ruimtetemperatuur", false},
+            {214, "F14", "Storing sensor tapwatertemperatuur", false},
+            {215, "F15", "Storing sensor cv-aanvoertemperatuur", false},
+            {216, "F16", "Storing sensor aanvoertemperatuur Tuo", false},
+            {217, "F17", "Storing sensor retourtemperatuur Tui", false},
+            {218, "F18", "Storing sensor condensortemperatuur Tup", false},
+            {221, "F21", "Storing sensor cv-aanvoertemperatuur zone 1", false},
+            {222, "F22", "Storing sensor cv-aanvoertemperatuur zone 2", false},
+            {301, "E01", "Communicatiestoring", false},
+            {302, "E02", "Communicatiestoring", false},
+            {303, "E03", "Voedingsspanning", false},
+            {304, "E04", "Overbelasting voedingsspanning", false},
+            {305, "E05", "Probleem inverter PCB", false},
+            {306, "E06", "VDC-module voedingsspanning", false},
+            {307, "E07", "Voedingsspanning te hoog of te laag", false},
+            {308, "E08", "Storing EEPROM warmtepomp", false},
+            {401, "TO01", "Pomp start timeout", false},
+            {402, "TO02", "Compressor start timeout", false},
+            {403, "TO03", "Pomp stop timeout", false},
+            {404, "TO05", "Modbus verbinding timeout", false},
+            {405, "TO04", "3-weg klep status fout", false},
+            {406, "TO06", "Binnenunit failsafe / herstart", false},
+            {101, "P01", "Bedrijfstroom warmtepomp", true},
+            {102, "P02", "Bedrijfstroom warmtepomp", true},
+            {106, "P06", "Storing compressor - laag drukverschil", true},
+            {107, "P07", "Compressor voorverwarming", true},
+            {111, "P11", "Compressor frequentiebegrenzing op buitentemperatuur", true},
+            {112, "P12", "Compressor frequentiebegrenzing op buitentemperatuur", true},
+            {113, "P13", "Storing compressor - laag drukverschil", true},
+            {407, "Waarschuwing", "Communicatie-failsafe binnenunit", true},
+            {408, "Waarschuwing", "EEPROM-fout binnenunit", true},
+            {409, "Waarschuwing", "Pompterugmelding P0 alarm", true},
+          };
+          float x = id(rx_ec).state;
+          const char *icoon, *code, *tekst;
+          uint32_t k;
+          char buf[16];
+          if (!id(link_ok) || std::isnan(x)) {
+            icoon = "\U000F0338"; k = 0x6B7080; code = "Geen verbinding"; tekst = "met OpenAmber";
+          } else {
+            int c = (int) lroundf(x);
+            if (c == 0) {
+              icoon = "\U000F05E0"; k = 0x2ECC71; code = "Geen foutcodes"; tekst = "";
+            } else {
+              const F *f = nullptr;
+              for (const auto &e : tabel) if (e.c == c) { f = &e; break; }
+              icoon = "\U000F0026";
+              if (f) {
+                k = f->waarsch ? 0xFF5100 : 0xFF2020;
+                code = f->code; tekst = f->tekst;
+              } else {
+                k = 0xFF2020;
+                snprintf(buf, sizeof(buf), "Code %d", c);
+                code = buf; tekst = "Onbekende melding";
+              }
+            }
+          }
+          lv_label_set_text(id(fout_icon), icoon);
+          lv_obj_set_style_text_color(id(fout_icon), lv_color_hex(k), 0);
+          lv_label_set_text(id(fout_code), code);
+          lv_label_set_text(id(fout_tekst), tekst);
+
+  # ---------------------------------------------------------------------
+  # Instellingen-pagina: carrousel zoals het schema (vijf rijen, de geselecteerde in rij 3) met
+  # Ledring, Helderheid, Thema, Sensor, Software-update en Terug.
+  #   Ledring en Sensor: druk = wisselen       Helderheid en Thema: druk = wijzigen, draaien, druk = klaar
+  #   Software-update: druk = de update-pagina openen
+  # De waarden zijn gewone entiteiten (ledring_aan, ledring_helderheid, thema, kamer_bron), ook in de web-interface.
+  # ---------------------------------------------------------------------
+  - id: inst_render
+    then:
+      - lambda: |-
+          static const char *namen[6] = {"Ledring", "Helderheid", "Thema", "Sensor", "Software-update", "Terug"};
+          static const char *themas[5] = {"Paars", "Oranje", "Groen", "Blauw", "Grijs"};
+          lv_obj_t *rij[5]    = {id(inst_rij_1), id(inst_rij_2), id(inst_rij_3), id(inst_rij_4), id(inst_rij_5)};
+          lv_obj_t *naam[5]   = {id(inst_rij_1_naam), id(inst_rij_2_naam), id(inst_rij_3_naam), id(inst_rij_4_naam), id(inst_rij_5_naam)};
+          lv_obj_t *waarde[5] = {id(inst_rij_1_waarde), id(inst_rij_2_waarde), id(inst_rij_3_waarde), id(inst_rij_4_waarde), id(inst_rij_5_waarde)};
+          int sel = id(inst_sel);
+          char buf[16];
+          for (int r = 0; r < 5; r++) {
+            int i = sel + r - 2;                     // rij 3 (r = 2) is de geselecteerde
+            if (i < 0 || i > 5) { lv_obj_add_flag(rij[r], LV_OBJ_FLAG_HIDDEN); continue; }
+            lv_obj_clear_flag(rij[r], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(naam[r], LV_OBJ_FLAG_HIDDEN);
+            lv_label_set_text(naam[r], namen[i]);
+            const char *w = "";
+            if (i == 0) w = id(ledring_aan).state ? "Aan" : "Uit";
+            if (i == 1) { snprintf(buf, sizeof(buf), "%d%%", (int) lroundf(id(ledring_helderheid).state)); w = buf; }
+            if (i == 2) w = themas[std::min<size_t>(id(thema).active_index().value_or(0), 4)];
+            if (i == 3) w = id(kamer_bron).active_index().value_or(1) == 0 ? "Tr" : "BME680";
+            if (i == 5) {                            // Terug: alleen een gecentreerde tekst
+              lv_obj_add_flag(naam[r], LV_OBJ_FLAG_HIDDEN);
+              lv_label_set_text(waarde[r], "Terug");
+              lv_obj_set_style_bg_opa(waarde[r], LV_OPA_TRANSP, 0);
+              lv_obj_set_style_text_color(waarde[r], lv_color_hex(0xE8EAF0), 0);
+              lv_obj_align(waarde[r], LV_ALIGN_CENTER, 0, 0);
+              continue;
+            }
+            bool wijzig = (r == 2) && id(inst_wijzig);
+            lv_label_set_text(waarde[r], w);
+            lv_obj_set_style_bg_color(waarde[r], lv_color_hex(id(accent_kleur)), 0);
+            lv_obj_set_style_bg_opa(waarde[r], wijzig ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+            lv_obj_set_style_text_color(waarde[r], lv_color_hex(wijzig ? 0x0C0D10 : 0xE8EAF0), 0);
+            lv_obj_align(waarde[r], LV_ALIGN_RIGHT_MID, wijzig ? -22 : -6, 0);   // -6: de label heeft zelf 16 px padding
+          }
+          lv_label_set_text(id(inst_hint), id(inst_wijzig) ? "draai: wijzigen • druk: klaar" : "draai: kiezen • druk: wijzigen");
+
+  - id: inst_draai
+    parameters:
+      delta: int
+    then:
+      - lambda: |-
+          int sel = id(inst_sel);
+          if (!id(inst_wijzig)) {
+            id(inst_sel) = std::max(0, std::min(5, sel + delta));
+          } else if (sel == 1) {
+            float v = std::max(5.0f, std::min(100.0f, id(ledring_helderheid).state + delta * 5.0f));
+            id(ledring_helderheid).make_call().set_value(v).perform();
+          } else if (sel == 2) {
+            int t = (int) id(thema).active_index().value_or(0);
+            id(thema).make_call().set_index(((t + delta) % 5 + 5) % 5).perform();   // meteen zichtbaar
+          }
+      - script.execute: inst_render
+
+  - id: inst_druk
+    then:
+      - lambda: |-
+          int sel = id(inst_sel);
+          if (sel == 0) id(ledring_aan).toggle();
+          else if (sel == 3) id(kamer_bron).make_call().select_next(true).perform();   // Tr <-> BME680
+          else if (sel == 4) id(show_update).execute();
+          else if (sel == 5) { id(inst_wijzig) = false; id(show_menu).execute(); }
+          else id(inst_wijzig) = !id(inst_wijzig);
+      - script.execute: inst_render
+
+  # ---------------------------------------------------------------------
+  # Update-pagina: geïnstalleerde versie, beschikbare versie en een knop.
+  # Er staat nog geen firmware op GitHub; de knop meldt dat er nog geen updatebron is.
+  # Later: update-component (http_request) met het manifest van de laatste GitHub-release.
+  # ---------------------------------------------------------------------
+  - id: update_render
+    then:
+      - lambda: |-
+          bool knop = id(update_sel) == 0;
+          lv_obj_set_style_bg_opa(id(update_knop), knop ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+          lv_obj_set_style_border_opa(id(update_knop), knop ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+          lv_obj_set_style_bg_opa(id(update_terug), knop ? LV_OPA_TRANSP : LV_OPA_COVER, 0);
+          lv_obj_set_style_border_opa(id(update_terug), knop ? LV_OPA_TRANSP : LV_OPA_COVER, 0);
+
+  - id: update_druk
+    then:
+      - lambda: |-
+          if (id(update_sel) == 1) { id(show_inst).execute(); return; }
+          lv_label_set_text(id(update_status), "Nog geen updatebron ingesteld");
+
+  # Kleurthema toepassen: achtergrondverloop van alle pagina's en de accentkleur
+  - id: thema_toepassen
+    then:
+      - lambda: |-
+          if (!id(ui_klaar)) return;                 // bij het opstarten: on_boot roept dit later aan
+          //                               Paars     Oranje    Groen     Blauw     Grijs
+          static const uint32_t van[5]    = {0xCE22C8, 0xFF8A00, 0x2ECC71, 0x00C6FF, 0x8E94A3};
+          static const uint32_t naar[5]   = {0x1900FF, 0xE52E71, 0x0B6E4F, 0x0047FF, 0x30333B};
+          static const uint32_t accent[5] = {0x2EA8FF, 0xFF8A00, 0x2ECC71, 0x00C6FF, 0xC4C8D2};
+          int t = std::min<int>(id(thema).active_index().value_or(0), 4);
+          auto *g = id(achtergrond_verloop);
+          g->stops[0].color = lv_color_hex(van[t]);
+          g->stops[1].color = lv_color_hex(naar[t]);
+          id(accent_kleur) = accent[t];
+          lv_obj_t *bg[9] = {id(climate_background), id(carrousel_background), id(overzicht_background), id(modus_background),
+                             id(pair_background), id(schema_background), id(fout_background), id(inst_background),
+                             id(update_background)};
+          for (auto *o : bg) {
+            lv_obj_set_style_bg_grad(o, g, 0);       // opnieuw zetten, zodat LVGL de nieuwe kleuren tekent
+            lv_obj_invalidate(o);
+          }
+          lv_color_t a = lv_color_hex(accent[t]);
+          lv_obj_set_style_border_color(id(schema_rij_3), a, 0);
+          lv_obj_set_style_border_color(id(inst_rij_3), a, 0);
+          lv_obj_set_style_border_color(id(update_knop), a, 0);
+          lv_obj_set_style_border_color(id(update_terug), a, 0);
+          lv_obj_set_style_bg_color(id(schema_toast), a, 0);
+          lv_obj_set_style_border_color(id(pair_roller)->obj, a, LV_PART_SELECTED);
+      - script.execute: schema_render
+      - script.execute: inst_render
+
+  # ---------------------------------------------------------------------
+  # Draaiknop: wat een klik doet hangt af van de pagina (knob_context)
+  # ---------------------------------------------------------------------
+  - id: knob_step
+    parameters:
+      delta: int
+    then:
+      # Is het scherm donker (na de slaaptimer)? Dan alleen wakker maken, niets verstellen.
+      - if:
+          condition:
+            light.is_off: backlight
+          then:
+            - script.execute: reset_backlight_timer
+            - script.stop: knob_step
+      - script.execute: reset_backlight_timer
+
+      # 0 = Temperatuur: setpoint van de gekozen modus instellen
+      # (koelen: hoog setpoint, anders laag setpoint, zoals het scherm van OpenAmber)
+      - if:
+          condition:
+            lambda: 'return id(knob_context) == 0;'
+          then:
+            - globals.set:
+                id: user_is_adjusting
+                value: 'true'
+            - if:
+                condition:
+                  lambda: 'return id(mode_code) == 2;'
+                then:
+                  - if:
+                      condition:
+                        lambda: 'return delta > 0;'
+                      then:
+                        - number.increment:
+                            id: target_high
+                            cycle: false
+                      else:
+                        - number.decrement:
+                            id: target_high
+                            cycle: false
+                else:
+                  - if:
+                      condition:
+                        lambda: 'return delta > 0;'
+                      then:
+                        - number.increment:
+                            id: target_low
+                            cycle: false
+                      else:
+                        - number.decrement:
+                            id: target_low
+                            cycle: false
+            - script.execute: send_command
+            - script.execute: release_adjusting
+
+      # 1 = Menu: door de carrousel draaien (rond, dus na het laatste item weer het eerste)
+      - if:
+          condition:
+            lambda: 'return id(knob_context) == 1;'
+          then:
+            - lambda: |-
+                id(menu_index) = ((id(menu_index) + delta) % 7 + 7) % 7;
+            - script.execute: menu_render
+
+      # 2 = Modus: kiezen tussen Verwarmen, Koelen en Uit (draait rond); bevestigen met de korte druk
+      - if:
+          condition:
+            lambda: 'return id(knob_context) == 2;'
+          then:
+            - lambda: |-
+                id(modus_keuze) = ((id(modus_keuze) + delta) % 3 + 3) % 3;
+            - script.execute: modus_render
+
+      # 3 = Koppelen: door de lijst met gevonden OpenAmbers lopen
+      - if:
+          condition:
+            lambda: 'return id(knob_context) == 3;'
+          then:
+            - lambda: |-
+                lv_obj_t *r = id(pair_roller)->obj;
+                int n = (int) lv_roller_get_option_cnt(r);
+                int sel = (int) lv_roller_get_selected(r) + delta;
+                if (sel < 0) sel = 0;
+                if (sel > n - 1) sel = n - 1;
+                lv_roller_set_selected(r, sel, LV_ANIM_ON);
+
+      # 4 = Overzicht: alleen lezen, draaien doet niets
+
+      # 8 = Update: kiezen tussen de knop en Terug
+      - if:
+          condition:
+            lambda: 'return id(knob_context) == 8;'
+          then:
+            - lambda: 'id(update_sel) = delta > 0 ? 1 : 0;'
+            - script.execute: update_render
+
+      # 7 = Instellingen: kiezen, of de helderheid / het thema veranderen
+      - if:
+          condition:
+            lambda: 'return id(knob_context) == 7;'
+          then:
+            - script.execute:
+                id: inst_draai
+                delta: !lambda 'return delta;'
+
+      # 5 = Schema: kiezen of de waarde veranderen
+      - if:
+          condition:
+            lambda: 'return id(knob_context) == 5;'
+          then:
+            - script.execute:
+                id: schema_draai
+                delta: !lambda 'return delta;'

@@ -1,0 +1,15 @@
+# =====================================================================
+# Emulator: onderdelen van openamber-thermostat.yaml die niet op een laptop kunnen draaien.
+# Alleen voor openamber-thermostat-emulator.yaml. Dit staat in een apart pakket, zodat het
+# emulatorbestand de koppeling en de klok daarna opnieuw kan neerzetten (met dezelfde id).
+# =====================================================================
+wifi: !remove
+captive_portal: !remove
+ota: !remove
+espnow: !remove
+
+packet_transport:
+  - id: !remove transport_broadcast   # ESP-NOW; het emulatorbestand zet er een UDP-versie voor in de plaats
+
+time:
+  - id: !remove sntp_time             # internetklok; het emulatorbestand gebruikt de klok van de laptop

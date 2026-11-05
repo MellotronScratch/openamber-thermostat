@@ -1,0 +1,79 @@
+# =====================================================================
+# Eigen icoonfonts voor de thermostaat (buiten de Designer, zodat ze niet worden overschreven)
+#
+# De Designer maakt van elk icoonfont alleen de glyphs die op het canvas staan. Het script wisselt
+# echter van icoon (carrousel met loop, modus, statusicoon), dus die iconen moeten in het lettertype
+# zitten van de plek waar ze komen te staan. Daarom staan hier drie kopieën met alle menu-iconen,
+# en een groot font voor de modus-pagina. ui_scripts.yaml zet ze bij het opstarten op de juiste widgets.
+# =====================================================================
+font:
+  - file:
+      url: "https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/fonts/materialdesignicons-webfont.ttf"
+      type: web
+    id: menu_icons_28
+    size: 28
+    glyphs: [
+      "\U000F0393",  # Thermostat      (menu: Temperatuur)
+      "\U000F0A1D",  # Dashboard       (menu: Overzicht)
+      "\U000F00F0",  # Calendar clock  (menu: Schema)
+      "\U000F0026",  # Alert           (menu: Foutcodes)
+      "\U000F0493",  # Cog             (menu: Modus)
+      "\U000F0337",  # Link            (menu: Koppelen)
+      "\U000F062E",  # Tune            (menu: Instellingen)
+    ]
+  - file:
+      url: "https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/fonts/materialdesignicons-webfont.ttf"
+      type: web
+    id: menu_icons_33
+    size: 33
+    glyphs: [
+      "\U000F0393",  # Thermostat
+      "\U000F0A1D",  # Dashboard
+      "\U000F00F0",  # Calendar clock
+      "\U000F0026",  # Alert
+      "\U000F0493",  # Cog
+      "\U000F0337",  # Link
+      "\U000F062E",  # Tune
+    ]
+  # Rij 3 van de carrousel (geselecteerd). Dit font zet het script ook op climate_icon_heatcool,
+  # dat vuur, sneeuwvlok, ontdooien of standby toont.
+  - file:
+      url: "https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/fonts/materialdesignicons-webfont.ttf"
+      type: web
+    id: menu_icons_40
+    size: 40
+    glyphs: [
+      "\U000F0393",  # Thermostat
+      "\U000F0A1D",  # Dashboard
+      "\U000F00F0",  # Calendar clock
+      "\U000F0026",  # Alert
+      "\U000F0493",  # Cog
+      "\U000F0337",  # Link
+      "\U000F062E",  # Tune
+      "\U000F0238",  # Fire (verwarmen)
+      "\U000F0717",  # Snowflake (koelen)
+      "\U000F12CB",  # Snowflake melt (ontdooien)
+      "\U000F0906",  # Power standby (uit)
+    ]
+  # Groot icoon op de modus-pagina (widget modus_icon)
+  - file:
+      url: "https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/fonts/materialdesignicons-webfont.ttf"
+      type: web
+    id: modus_icons_80
+    size: 80
+    glyphs: [
+      "\U000F0238",  # Fire (verwarmen)
+      "\U000F0717",  # Snowflake (koelen)
+      "\U000F0906",  # Power standby (uit)
+    ]
+  # Groot icoon op de foutcodespagina (widget fout_icon)
+  - file:
+      url: "https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/fonts/materialdesignicons-webfont.ttf"
+      type: web
+    id: fout_icons_80
+    size: 80
+    glyphs: [
+      "\U000F05E0",  # Check circle (geen foutcodes)
+      "\U000F0026",  # Alert (fout of waarschuwing)
+      "\U000F0338",  # Link off (geen verbinding met OpenAmber)
+    ]
