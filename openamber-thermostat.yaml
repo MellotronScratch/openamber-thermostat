@@ -38,6 +38,7 @@ substitutions:
   # Gedeelde sleutel voor ESP-NOW. Moet gelijk zijn aan thermostat_link_key in OpenAmber
   # (src/openamber/thermostat_link/thermostat_link.yaml); daar is dit ook de standaard.
   thermostat_link_key: openamber-thermostat-link
+  ledring_beschikbaar: "false"    # ledring voorlopig uit en grijs in Instellingen (geeft glitches en WiFi-uitval, B17)
   vat_leeg: "20"                  # tapwatertemperatuur waarbij het vat als leeg getoond wordt (graden)
   condens_marge: "2"              # waarschuwen als de aanvoer minder dan zoveel graden boven het dauwpunt komt (bij koelen)
   vat_doel_standaard: "55"        # gebruikt als OpenAmber geen tapwater-setpoint doorgeeft (graden)
@@ -105,10 +106,9 @@ esphome:
               - script.execute: show_pair
 
 logger:
-  level: DEBUG               # TIJDELIJK voor het testen van ESP-NOW; terug naar INFO
+  level: INFO
   logs:
-    espnow: DEBUG             # TIJDELIJK; normaal NONE (te veel logregels en geheugen)
-    packet_transport: DEBUG   # TIJDELIJK
+    espnow: NONE              # niet op DEBUG/VERBOSE zetten: te veel logregels en geheugen
     sensor: WARN              # anders vult de log zich elke paar seconden met sensorwaarden
     number: WARN
     select: WARN
@@ -588,7 +588,7 @@ switch:
     id: ledring_aan
     name: "Ledring"
     optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF   # voorlopig standaard uit: het effect "Status" lijkt de thermostaat te zwaar te belasten (B17)
+    restore_mode: RESTORE_DEFAULT_OFF   # standaard uit (B17)
     entity_category: config
     on_turn_on:
       - script.execute: led_update
@@ -743,8 +743,8 @@ script:
   - id: led_update
     then:
       - if:
-          condition:
-            switch.is_on: ledring_aan
+          condition:              # ledring_beschikbaar false: altijd uit, ook als de schakelaar nog aan staat
+            lambda: 'return ${ledring_beschikbaar} && id(ledring_aan).state;'
           then:
             - light.turn_on:
                 id: status_leds

@@ -857,6 +857,7 @@ script:
   # Ledring, Helderheid, Thema, Sensor, Software-update en Terug.
   #   Ledring en Sensor: druk = wisselen       Helderheid en Thema: druk = wijzigen, draaien, druk = klaar
   #   Software-update: druk = de update-pagina openen
+  # Zolang ledring_beschikbaar false is (B17), zijn Ledring en Helderheid grijs ("n.v.t.") en doet een druk niets.
   # De waarden zijn gewone entiteiten (ledring_aan, ledring_helderheid, thema, kamer_bron), ook in de web-interface.
   # ---------------------------------------------------------------------
   - id: inst_render
@@ -875,9 +876,13 @@ script:
             lv_obj_clear_flag(rij[r], LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(naam[r], LV_OBJ_FLAG_HIDDEN);
             lv_label_set_text(naam[r], namen[i]);
+            bool grijs = !${ledring_beschikbaar} && i <= 1;   // ledring voorlopig niet beschikbaar
+            uint32_t tekstkleur = grijs ? 0x6B7080 : 0xE8EAF0;
+            lv_obj_set_style_text_color(naam[r], lv_color_hex(tekstkleur), 0);
             const char *w = "";
-            if (i == 0) w = id(ledring_aan).state ? "Aan" : "Uit";
-            if (i == 1) { snprintf(buf, sizeof(buf), "%d%%", (int) lroundf(id(ledring_helderheid).state)); w = buf; }
+            if (grijs) w = "n.v.t.";
+            else if (i == 0) w = id(ledring_aan).state ? "Aan" : "Uit";
+            else if (i == 1) { snprintf(buf, sizeof(buf), "%d%%", (int) lroundf(id(ledring_helderheid).state)); w = buf; }
             if (i == 2) w = themas[std::min<size_t>(id(thema).active_index().value_or(0), 4)];
             if (i == 3) w = id(kamer_bron).active_index().value_or(1) == 0 ? "Tr" : "BME680";
             if (i == 5) {                            // Terug: alleen een gecentreerde tekst
@@ -892,10 +897,12 @@ script:
             lv_label_set_text(waarde[r], w);
             lv_obj_set_style_bg_color(waarde[r], lv_color_hex(id(accent_kleur)), 0);
             lv_obj_set_style_bg_opa(waarde[r], wijzig ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
-            lv_obj_set_style_text_color(waarde[r], lv_color_hex(wijzig ? 0x0C0D10 : 0xE8EAF0), 0);
+            lv_obj_set_style_text_color(waarde[r], lv_color_hex(wijzig ? 0x0C0D10 : tekstkleur), 0);
             lv_obj_align(waarde[r], LV_ALIGN_RIGHT_MID, wijzig ? -22 : -6, 0);   // -6: de label heeft zelf 16 px padding
           }
-          lv_label_set_text(id(inst_hint), id(inst_wijzig) ? "draai: wijzigen • druk: klaar" : "draai: kiezen • druk: wijzigen");
+          bool grijs_gekozen = !${ledring_beschikbaar} && sel <= 1;
+          lv_label_set_text(id(inst_hint), id(inst_wijzig) ? "draai: wijzigen • druk: klaar" :
+                                           grijs_gekozen ? "nog niet beschikbaar" : "draai: kiezen • druk: wijzigen");
 
   - id: inst_draai
     parameters:
@@ -918,6 +925,7 @@ script:
     then:
       - lambda: |-
           int sel = id(inst_sel);
+          if (!${ledring_beschikbaar} && sel <= 1) return;   // ledring voorlopig niet beschikbaar
           if (sel == 0) id(ledring_aan).toggle();
           else if (sel == 3) id(kamer_bron).make_call().select_next(true).perform();   // Tr <-> BME680
           else if (sel == 4) id(show_update).execute();

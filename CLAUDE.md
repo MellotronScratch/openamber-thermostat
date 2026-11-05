@@ -92,4 +92,4 @@ Firmware
 - B14 Na het flashen in de logs letten op een fout over de pakketgrootte van ESP-NOW.
 - B15 Foutcodes: nu alleen de eerste actieve code (`ec`). Alle codes kan later met twee bitmasker-kanalen vanuit OpenAmber.
 - B16 Het effect "Vat" wordt niet meer gebruikt; eventueel opruimen.
-- B17 Thermostaat valt van de WiFi zodra hij gekoppeld is; vermoedelijk door het effect "Status" (40 ms, ademt als de compressor draait). Ledring staat daarom standaard uit. Proef: trager effect (100-200 ms) of zonder ademen. Ook nog: debug-logging (espnow, packet_transport) terug naar INFO.
+- B17 Ledring: het effect "Status" verstuurt de leds elke 40 ms (`schedule_show()` bij elke update, ook als de kleur gelijk blijft). Met de ring aan: glitches op het scherm en de thermostaat valt van de WiFi; met de ring uit 15 min stabiel. Daarom standaard uit. Later: alleen versturen bij een kleurwijziging en een trager interval. Waarschijnlijk ook de oorzaak van B01.
