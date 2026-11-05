@@ -1,8 +1,9 @@
 # OpenAmber Thermostaat
 
 Een ronde draaiknop-thermostaat (WT32S3-21S / ZX2D10GE01R-V4848, ESP32-S3) die via ESP-NOW
-praat met het OpenAmber-display op de warmtepomp. De thermostaat toont statussen en temperaturen
-en laat je het setpoint en de modus aanpassen. Alle andere instellingen doe je op OpenAmber zelf.
+praat met het OpenAmber-display op de warmtepomp. De thermostaat toont statussen, temperaturen en foutcodes,
+laat je het setpoint en de modus aanpassen en heeft een weekschema met nachtverlaging. Alle andere instellingen
+doe je op OpenAmber zelf.
 
 De koppeling aan de OpenAmber-kant staat in OpenAmber zelf
 (`src/openamber/thermostat_link/thermostat_link.yaml`, voorlopig alleen in de build voor het Waveshare-display).
@@ -20,20 +21,21 @@ De koppeling aan de OpenAmber-kant staat in OpenAmber zelf
 8. [Ledring](#ledring)
 9. [Werken met de LVGL Designer](#werken-met-de-lvgl-designer)
 10. [Flashen](#flashen)
-11. [Instellingen die je kunt aanpassen](#instellingen-die-je-kunt-aanpassen)
-12. [Bekende problemen en valkuilen](#bekende-problemen-en-valkuilen)
+11. [Emulator](#emulator)
+12. [Instellingen die je kunt aanpassen](#instellingen-die-je-kunt-aanpassen)
+13. [Bekende problemen en valkuilen](#bekende-problemen-en-valkuilen)
 
 ## Bestanden
 
 ```
 openamber-thermostat-ZX2D10GE01R-V4848.yaml  bordbestand: het bestand dat je compileert (pinnen, scherm, backlight, ledring, knop, BME680)
-openamber-thermostat.yaml                    generiek deel: sensoren, ESP-NOW, koppelen, scripts, besturing
-openamber-thermostat-emulator.yaml           emulator op de laptop (SDL-venster), zie CLAUDE.md
-thermostat/ui_designer.yaml                  lettertypen, kleuren en pagina's uit de LVGL Designer (wordt vervangen bij een export)
-thermostat/ui_scripts.yaml                   scripts die iets met het scherm doen
-thermostat/ui_fonts.yaml                     icoonfonts (MDI)
-thermostat/ui_tikken.yaml                    tikken rond het setpoint
-thermostat/schema.yaml                       nachtverlaging per weekdag
+openamber-thermostat.yaml                    generiek deel: sensoren, ESP-NOW, koppelen, setpoints, scripts
+openamber-thermostat-emulator.yaml           emulator op de laptop (zie Emulator)
+thermostat/ui_designer.yaml                  lettertypen, kleuren en pagina's uit de LVGL Designer
+thermostat/ui_scripts.yaml                   scripts die de pagina's bedienen (menu, modus, koppelen, schema, instellingen, ...)
+thermostat/ui_fonts.yaml                     icoonfonts (MDI) die alleen de scripts gebruiken
+thermostat/ui_tikken.yaml                    vulling en kleurverloop van de tikken rond het setpoint
+thermostat/schema.yaml                       weekschema met nachtverlaging
 thermostat/emulator_weg.yaml                 haalt voor de emulator weg wat niet op een laptop kan
 ```
 
@@ -87,8 +89,11 @@ het ESPHome-onderdeel `packet_transport`.
 - **Elke waarde heeft een naam** (zoals `tw` of `err`). De zender zegt "ik deel deze sensor onder die naam", de
   ontvanger zegt "ik wil die naam van dat apparaat".
 - **Alleen getallen en aan/uit-waarden** gaan over. Een volledige `climate` (modus plus setpoints) kan niet gedeeld worden.
-- De waarden worden regelmatig opnieuw verstuurd (het interval stelt `packet_transport` in). Of ESPHome een te vol
-  pakket zelf over meerdere pakketten verdeelt, is niet getest; zie de opmerking over pakketgrootte onderaan.
+- Een waarde wordt verstuurd zodra hij verandert, en daarnaast regelmatig opnieuw (elke 15 s).
+- **Zelfde WiFi-kanaal**: ESP-NOW gebruikt het kanaal van de WiFi-verbinding. Beide apparaten moeten dus op hetzelfde
+  kanaal zitten (in een mesh met meerdere accesspoints kan dat verschillen).
+- **WiFi-energiebesparing staat uit** (`power_save_mode: none`) aan beide kanten; anders slaapt de radio tussendoor en
+  gaan pakketten verloren.
 
 Belangrijk bij de configuratie:
 
@@ -107,11 +112,13 @@ Belangrijk bij de configuratie:
 **Zelf gebouwd**
 
 1. **Setpoints en modus van OpenAmber naar de thermostaat.** OpenAmber leest elke 5 seconden zijn eigen
-   `climate_controller` uit en zet de waarden in gewone sensoren (`slo`, `shi`, `mode`). Die gaan dan via het standaardmechanisme mee.
+   `climate_controller` uit en zet de waarden in gewone sensoren (`slo`, `shi`, `mode`). Na een commando van de
+   thermostaat gebeurt dat meteen.
 2. **Commando's van de thermostaat naar OpenAmber** in één getal (volgnummer, modus, setpoints). Zie hieronder.
 3. **Koppelen** met een code die uit het MAC-adres komt. Zie hieronder.
 4. **Foutcode** (`ec`): OpenAmber zet de eerste actieve fout of waarschuwing om in één getal.
-5. **Verbindings- en condenscontrole** op de thermostaat zelf.
+5. **Tijd** (`tm`): OpenAmber stuurt de tijd mee, zodat het schema ook werkt als de thermostaat geen internet heeft.
+6. **Verbindings- en condenscontrole** op de thermostaat zelf.
 
 ## Koppelen
 
@@ -123,11 +130,11 @@ zonder dat er een MAC-adres in de code hoeft te staan.
 - De thermostaat bewaart de gekozen code in de tekst-entiteit `pair_code` (blijft bewaard na een herstart).
 - **Vergelijking**: bij elk binnenkomend pakket vergelijkt de thermostaat de `pin` met `pair_code`. Alleen bij gelijke
   code (`pin_ok`) worden de waarden gebruikt; alles van een andere OpenAmber wordt genegeerd.
-- **Andersom**: OpenAmber stuurt de thermostaat-code die hij terugkrijgt ook naar zichzelf en negeert commando's en
-  BME-waarden van een andere thermostaat (`thermostat_pin_ok`).
-- **Op de thermostaat kiezen**: de koppelpagina toont een lijst van alle OpenAmbers die recent gehoord zijn.
-  Draai aan de knop om te kiezen, druk kort om te bevestigen. Een lange druk op de knop opent de koppelpagina.
-  Is er nog niet gekoppeld, dan opent de pagina een paar seconden na het opstarten vanzelf.
+- **Andersom**: de thermostaat stuurt de gekozen code terug, en OpenAmber negeert commando's en
+  BME-waarden van een thermostaat met een andere code (`thermostat_pin_ok`).
+- **Op de thermostaat kiezen**: Menu → Koppelen toont een lijst van alle OpenAmbers die recent gehoord zijn.
+  Draai om te kiezen, druk kort om te bevestigen. Is er nog niet gekoppeld, dan opent de pagina een paar seconden na
+  het opstarten vanzelf.
 
 Waarden zijn floats met 24 bits nauwkeurigheid. Dat is precies genoeg voor 6 hex-tekens (24 bits), daarom is de code 6 tekens
 en niet het volledige MAC-adres (48 bits).
@@ -150,13 +157,16 @@ OpenAmber pakt dat uit en voert het uit. Daarbij gelden deze regels:
 
 - **Zelfde volgnummer als de vorige keer**: negeren. Een herhaald pakket wordt zo niet twee keer uitgevoerd.
 - **Andere thermostaat** (koppelcode klopt niet): negeren.
-- **Setpoints**: alleen toegepast als `laag >= 5`, `hoog <= 35` en `laag <= hoog`.
+- **Setpoint**: net als op het scherm van OpenAmber wordt alleen het setpoint van de actieve modus gezet:
+  bij koelen het hoge (`hoog`), anders het lage (`laag`). Alleen tussen 5 en 35 graden.
 - De thermostaat wacht 600 ms na de laatste klik voordat hij verstuurt, zodat snel draaien niet vele commando's geeft.
 
 Zolang je aan de knop draait (en 3 seconden erna), negeert de thermostaat de setpoints die OpenAmber terugstuurt, anders
 springt het scherm heen en weer.
 
-Op OpenAmber moet de thermostaatkeuze op **Intern** staan, anders doet OpenAmber niets met de commando's.
+Op OpenAmber moet de thermostaatkeuze op **Intern** staan, anders doet de warmtepomp niets met de setpoints.
+Setpoints die de thermostaat zet, zijn net als op het scherm van OpenAmber tijdelijk: bij een herstart van OpenAmber
+gelden weer de standaardwaarden.
 
 ## Overzicht van alle waarden
 
@@ -169,11 +179,13 @@ Van OpenAmber naar de thermostaat:
 | `tws` | doeltemperatuur tapwater |
 | `tc`, `tuo`, `tui` | cv-aanvoer (Tc), aanvoer (Tuo), retour (Tui) |
 | `ta` | buitentemperatuur |
-| `rt` | ruimtetemperatuur |
-| `slo`, `shi` | laag en hoog setpoint |
+| `rt` | ruimtetemperatuur (Tr) |
+| `slo`, `shi` | laag (verwarmen) en hoog (koelen) setpoint |
 | `mode` | 0 uit, 1 verwarmen, 2 koelen |
 | `cf` | compressorfrequentie (Hz) |
 | `ec` | foutcode, zie hieronder |
+| `wsp` | huidig setpoint: gewenste aanvoertemperatuur (stooklijn, handmatig of koelen) |
+| `tm` | tijd: minuten sinds maandag 00:00 |
 | `err`, `warn` | fout actief, waarschuwing actief |
 | `wv`, `cd` | warmtevraag, koudevraag |
 | `twa`, `legp` | tapwater aanwezig, legionellapreventie ingeschakeld |
@@ -196,82 +208,87 @@ Eerst komt de eerste actieve fout, daarna de eerste waarschuwing.
 
 ## Bediening en scherm
 
-De knop heeft vier contexten (`knob_context`):
+**Draaien** = kiezen of instellen, **korte druk** = openen of bevestigen, **lange druk** = terug naar Temperatuur
+(op de schemapagina een stap terug). Onderaan elke pagina staat een hint met wat draaien en drukken daar doen.
 
-| Context | Pagina | Draaien doet |
-|---|---|---|
-| 0 | Home | setpoint aanpassen |
-| 1 | Overview | niets |
-| 2 | Modus kiezen | momenteel niet bereikbaar |
-| 3 | Koppelen | kiezen uit de lijst |
+| Pagina | Wat je er doet |
+|---|---|
+| Temperatuur | setpoint instellen: bij koelen het hoge, anders het lage (10 tot 30 graden, stappen van 0,5); korte druk opent het menu |
+| Menu | carrousel met Temperatuur, Overzicht, Schema, Foutcodes, Modus, Koppelen en Instellingen |
+| Overzicht | temperaturen en statussen van OpenAmber (alleen lezen) |
+| Schema | per weekdag een dag- en nachttemperatuur met tijden; kopiëren naar alle dagen |
+| Foutcodes | de eerste actieve fout of waarschuwing van OpenAmber, met de tekst uit OpenAmber |
+| Modus | Verwarmen, Koelen of Uit |
+| Koppelen | een OpenAmber kiezen uit de lijst |
+| Instellingen | Ledring en Helderheid (voorlopig niet beschikbaar), Thema, Sensor, Software-update |
 
-- **Korte druk**: op Home en Overview wisselen tussen de twee; op de koppelpagina bevestigen.
-- **Lange druk**: opent de koppelpagina.
-- Het scherm en de ledring gaan 60 seconden na de laatste bediening uit en komen terug bij draaien of drukken.
+- **Scherm**: gaat 60 seconden na de laatste bediening uit. De eerste druk of draai maakt het alleen wakker.
+- **Pagina-geheugen**: zonder bediening blijft de pagina staan; na 5 minuten gaat hij terug naar Temperatuur.
+- **Schema**: stuurt alleen het verwarmingssetpoint, en alleen in de modus Verwarmen.
+- **Sensor** (Instellingen): welke kamertemperatuur het scherm toont, Tr van OpenAmber of de eigen BME680.
+  OpenAmber regelt altijd op Tr.
+- **Thema** (Instellingen): achtergrondverloop en accentkleur (Paars, Oranje, Groen, Blauw, Grijs).
+- **Software-update** (Instellingen): de pagina is er, maar er is nog geen updatebron.
 
-**Overview-pagina**: kamertemperatuur, setpoint en tapwatertemperatuur, plus statusiconen:
-
-- **Hoofdicoon (`overview_icon_mode_heatcooltapleg`)**: toont de actieve modus. Voorrang als er meerdere
-  tegelijk gelden: ontdooien, legionellarun, tapwater maken, koelen, verwarmen, standby.
-- **Bliksem**: het backupelement staat aan.
-- **Uitroepteken**: rood bij een fout, oranje bij een waarschuwing, anders verborgen.
-- **Link-uit-icoon**: er is de afgelopen minuut geen pakket van de gekoppelde OpenAmber binnengekomen. Het hoofdicoon, de bliksem en het uitroepteken worden dan verborgen, want die gegevens zijn verouderd.
-- **Kraantje naast de tapwatertemperatuur**: alleen zichtbaar als tapwater aanwezig is; blauw als het bezig is, anders grijs.
-
-Een condenswaarschuwing wordt berekend (zie [Instellingen](#instellingen-die-je-kunt-aanpassen)) maar heeft nog geen icoon op het scherm.
+**Statusiconen** (Temperatuur en Overzicht): de actieve modus (voorrang: ontdooien, legionella, tapwater, koelen,
+verwarmen, standby), backupelement, fout (rood) of waarschuwing (oranje), en geen verbinding als er de afgelopen minuut
+geen pakket van de gekoppelde OpenAmber binnenkwam.
 
 ## Ledring
 
-De ring heeft 13 adresseerbare leds. Na bediening toont hij hoe vol het tapwatervat is, als een vat dat volloopt:
+De ring heeft 13 adresseerbare leds en het effect `Status` (in het bordbestand): kleur van de modus, ademen als de
+compressor draait, een korte flits bij bediening; met het scherm uit alleen rood bij een fout of oranje bij een waarschuwing.
 
-- Onderaan beginnen leds 8 en 9, dan loopt het aan beide kanten omhoog (7 en 10, 6 en 11, 5 en 12, 4 en 0, 3 en 1)
-  en eindigt het bij led 2 bovenaan. De nummering loopt met de klok mee.
-- Het niveau volgt de tapwatertemperatuur: leeg bij `vat_leeg` (20 °C), vol bij de doeltemperatuur van OpenAmber (`tws`).
-  Geeft OpenAmber geen doeltemperatuur, dan geldt `vat_doel_standaard` (55 °C).
-- De kleur hangt af van de positie: blauw onderin, oranje in het midden, rood bovenin.
-- Tijdens het opwarmen pulseert de led aan de bovenkant van de vulling.
-
-Ligt de ring anders ingebouwd, pas dan `led_bodem` aan. Het effect `LED test` laat elke led in een eigen kleur zien om de
-volgorde te bepalen.
+**Voorlopig niet beschikbaar.** Het effect verstuurt de leds elke 40 ms, ook als de kleur niet verandert. Daardoor
+geeft het scherm glitches en valt de thermostaat van de WiFi. Zolang `ledring_beschikbaar` op `"false"` staat, blijft
+de ring uit en staan Ledring en Helderheid grijs in Instellingen.
 
 ## Werken met de LVGL Designer
 
-`ui_designer.yaml` is een export uit de LVGL Designer en mag je helemaal vervangen. Let bij elke export op:
+`ui_designer.yaml` is een export uit de LVGL Designer (https://lvgl.espboards.dev). Let bij elke export op:
 
-1. **Ongebruikte lettertypen verwijderen.** Roboto en Material+Icons bovenaan geven de compileerfout
-   "Font Material+Icons is missing 1 glyph". Zet ze niet in het bestand.
-2. **`buffer_size: 25%`** staat bewust in het hoofdbestand onder `lvgl:` en niet in het Designer-bestand. Zo gaat hij niet verloren.
-3. **Symbolen die alleen het script gebruikt** (sneeuwvlok, bacterie, standby, ontdooien) komen alleen in de lettertypelijst
-   als er een label met dat symbool bestaat. Daarom staan er verborgen labels (`overview_icon_cool`, `_standby`, `_leg`,
-   `_defrost`). Verwijder ze niet.
+1. **Alles binnen het Designer-blok wordt bij een export opnieuw gegenereerd.** Wijzigingen die je met de hand daarin
+   maakt, gaan verloren; eigenschappen die de Designer niet kent, worden weggegooid.
+2. **`buffer_size`** staat in het bordbestand onder `lvgl:` en niet in het Designer-bestand. Zo gaat hij niet verloren.
+3. **Icoonfonts en het achtergrondverloop** worden bij het opstarten op de widgets gezet (`ui_fonts.yaml` en
+   `ui_scripts.yaml`), zodat ze een export overleven.
 4. **Hernoem je een widget**, pas dan ook `ui_scripts.yaml` en `openamber-thermostat.yaml` aan; die verwijzen met id naar de widgets.
-5. Staat er `hidden: true` op een container zoals `overview_canvas`, dan verdwijnt alles daarin.
-
-Scripts die iets met widgets doen staan in `ui_scripts.yaml`: `update_status_icons`, `show_pair`, `pair_refresh`,
-`pair_confirm`, `refresh_setpoint_ui`, `show_home`, `show_overview` en `knob_step`.
 
 ## Flashen
 
 - **Eerste keer of bij een kapotte bootloader**: via USB, met `firmware.factory.bin` (bijvoorbeeld via web.esphome.io).
   Het `ota`-bestand heeft geen bootloader en maakt het apparaat onbruikbaar als je het op die manier flasht.
-- **Daarna**: draadloos, via ESPHome Builder (Install, Wirelessly). Dat compileert en uploadt in één keer.
-  Een kant-en-klaar `firmware.ota.bin` kun je uploaden met `esphome upload <bestand.yaml> --device <ip>`; die compileert niet.
+- **Daarna**: draadloos, via ESPHome Builder (Install, Wirelessly) of `esphome run <bestand.yaml> --device <ip>`.
+  Een al gecompileerde build upload je met `esphome upload <bestand.yaml> --device <ip>`; die compileert niet.
 - **Volgorde bij wijzigingen aan beide kanten**: eerst OpenAmber, dan de thermostaat.
 - De `web_server` staat uit; die gebruikt veel geheugen.
 
+## Emulator
+
+Met de emulator probeer je het scherm uit op je laptop (ESPHome `host` met een SDL-venster). Nodig: SDL2
+(macOS: `brew install sdl2`).
+
+```
+esphome run openamber-thermostat-emulator.yaml
+```
+
+Pijltje links/rechts = draaien, Enter = korte druk, Backspace = lange druk. Er komen geen gegevens van OpenAmber binnen
+en de BME680 geeft vaste waarden. Het bordbestand wordt niet gebruikt; `thermostat/emulator_weg.yaml` haalt weg wat niet
+op een laptop kan (WiFi, OTA, ESP-NOW, internetklok).
+
 ## Instellingen die je kunt aanpassen
 
-Bovenin `openamber-thermostat.yaml` (en `led_bodem` in het bordbestand), onder `substitutions:`:
+Bovenin `openamber-thermostat.yaml` en `thermostat/ui_scripts.yaml`, onder `substitutions:`:
 
 | Naam | Standaard | Betekenis |
 |---|---|---|
-| `led_bodem` (bordbestand) | 8.5 | positie onderaan de ring (tussen led 8 en 9) |
-| `vat_leeg` | 20 | tapwatertemperatuur waarbij het vat als leeg getoond wordt |
-| `vat_doel_standaard` | 55 | doel als OpenAmber geen tapwater-setpoint doorgeeft |
+| `thermostat_link_key` | openamber-thermostat-link | sleutel voor ESP-NOW, gelijk aan die van OpenAmber |
+| `ledring_beschikbaar` | false | ledring aan of uit te zetten in Instellingen (zie Ledring) |
 | `condens_marge` | 2 | waarschuwen als de aanvoer minder dan zoveel graden boven het dauwpunt komt (bij koelen) |
+| `pagina_terug_min` | 5 | minuten zonder bediening voordat het scherm terugkeert naar Temperatuur |
 
 **Condens**: alleen bij koelen, als de aanvoertemperatuur (Tuo) minder dan `condens_marge` graden boven het dauwpunt van de
-kamer (gemeten door de BME680) komt. De uitkomst staat in de globale `condens_warn`.
+kamer (gemeten door de BME680) komt. De uitkomst staat in de globale `condens_warn`; er is nog geen icoon op het scherm.
 
 **Verbinding**: de thermostaat telt als verbonden zolang er in de afgelopen 60 seconden een pakket van de gekoppelde OpenAmber kwam.
 
@@ -280,13 +297,12 @@ kamer (gemeten door de BME680) komt. De uitkomst staat in de globale `condens_wa
 - **Zwart of grijs scherm na ESPHome 2026.10.1.** Op die versie bleef het scherm leeg (ook met het oorspronkelijke bestand),
   terwijl 2026.9.1 het goed deed. De oorzaak is niet gevonden; er is geen melding in de changelog over `mipi_rgb`.
   Bouw het project daarom met 2026.9.1, of test een nieuwere versie eerst met een minimaal bestand dat alleen een kleurvlak toont.
+- **Ledring**: geeft glitches en WiFi-uitval, zie Ledring.
 - **Eerst `factory`, dan `ota`**: zie Flashen.
 - **Namen kloppen niet**: bij "Unknown key"-meldingen eerst controleren of de provider-naam gelijk is aan de `esphome: name:`
   van het andere apparaat, en of `rolling_code_enable` uit staat.
-- **Geen data na het flashen**: controleer of beide kanten dezelfde `thermostat_link_key` hebben, de koppelcode klopt, en op OpenAmber
-  de thermostaatkeuze op Intern staat.
-- **Pakketgrootte**: er worden veel waarden verstuurd (ESP-NOW heeft een beperkte pakketgrootte). Controleer na het flashen in de
-  log of er geen meldingen over te grote pakketten zijn; zo wel, haal dan waarden weg.
+- **Geen data na het flashen**: controleer of beide kanten dezelfde `thermostat_link_key` hebben en of de koppelcode klopt.
+  Draait OpenAmber wel de nieuwe firmware? Bij een crash tijdens het opstarten gaat OpenAmber vanzelf terug naar de vorige versie.
 - **Het pad in `packages:`** is relatief aan de map van het hoofdbestand. "No such file or directory" betekent bijna altijd
   een verkeerd pad of een verkeerde bestandsnaam.
 - **Logniveau**: zet `espnow` niet op `DEBUG` of `VERBOSE`; dat geeft te veel logregels en kost geheugen. `lvgl` alleen aan als je een schermprobleem zoekt.
