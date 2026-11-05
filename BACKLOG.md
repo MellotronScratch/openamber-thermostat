@@ -1,0 +1,43 @@
+# Backlog
+
+Verwijs naar een item met zijn nummer (bijv. B03). Nieuwe items krijgen het volgende vrije nummer; nummers worden niet
+hergebruikt. Een afgerond item wordt doorgestreept en blijft staan.
+
+## Scherm en bediening
+
+- **B01** Glitches bij draaien aan de knop. Waarschijnlijk door de ledring (B17); kijken of ze met de ring uit nog voorkomen.
+  Anders: `buffer_size` in het bordbestand van 25% naar 100%.
+- **B02** Koppelpagina eventueel als carrousel (zoals menu en schema) in plaats van de roller; eerst de opgemaakte roller
+  bekijken (`text_line_space` is geschat).
+- **B03** Thema wisselen: controleren of de achtergrond meteen van kleur verandert of pas na een herstart.
+- **B04** Schema: na "Bewaard" of kopiëren wordt het setpoint meteen opnieuw uit het schema gezet; nog beslissen of dat zo moet.
+- **B05** Schema: ‹ › in de blauwe pil bij wijzigen weggelaten (onzeker of Quicksand die tekens heeft).
+- **B06** Schema-titel wijkt af van de andere pagina's (kleiner, grijs `0x8E94A3`), zodat de bovenste rij er niet onder valt.
+- **B07** Kamertemperatuurmarker op de ring, instelbare gloedkleur, verloop in de bezel, contrast van tekstkleuren.
+- **B08** Een tweede scherm (Nextion NX4848E021-011C).
+
+## Designer
+
+- **B09** `schema_canvas`, `fout_canvas` en `inst_canvas` los in de Designer plakken, anders verdwijnen ze bij de volgende export.
+- **B10** In de Designer `*_bezel_1` los op de pagina zetten (x 0, y 0) in plaats van in de achtergrond, en de opmaak van de
+  koppelpagina overnemen.
+- **B11** Nakijken of de Designer `opa` (dekking van de schema-rijen) bewaart.
+
+## Firmware
+
+- **B12** Twee `-Wformat-truncation`-waarschuwingen in de hulpjes `tijd`/`temp` van `schema_render` (onschuldig; buffer groter maken).
+- **B13** IRAM staat op 100%: een nieuw component dat IRAM wil, kan het compileren laten mislukken.
+- **B14** Pakketgrootte van ESP-NOW: tot nu toe geen fouten gezien in de logs van OpenAmber; blijven letten op meldingen
+  over te grote pakketten.
+- **B15** Foutcodes: nu alleen de eerste actieve code (`ec`). Alle codes kan later met twee bitmasker-kanalen vanuit OpenAmber.
+- **B16** Het effect "Vat" wordt niet meer gebruikt; eventueel opruimen (ook `vat_leeg`, `vat_doel_standaard` en `led_bodem`).
+- **B17** Ledring: het effect "Status" verstuurt de leds elke 40 ms (`schedule_show()` bij elke update, ook als de kleur
+  gelijk blijft). Met de ring aan: glitches op het scherm en de thermostaat valt van de WiFi; met de ring uit 15 minuten
+  stabiel. Daarom staat `ledring_beschikbaar` op `"false"`. Later: alleen versturen bij een kleurwijziging en een trager
+  interval, daarna weer beschikbaar maken. Waarschijnlijk ook de oorzaak van B01.
+
+## Software-update
+
+- **B18** Software-update via GitHub: release-workflow die de firmware bouwt (zonder `secrets.yaml`: API-sleutel en
+  hotspot-wachtwoord dan anders regelen) en een manifest publiceert; de update-pagina laat het update-component
+  (`http_request`) dat manifest lezen.
