@@ -227,6 +227,29 @@ Eerst komt de eerste actieve fout, daarna de eerste waarschuwing.
 | Koppelen | de koppelcode van OpenAmber invoeren |
 | Instellingen | Ledring en Helderheid (voorlopig niet beschikbaar), Thema, Sensor, Software-update |
 
+Zo zien de pagina's eruit (uit de emulator, met de voorbeeldwaarden van de nagebootste OpenAmber):
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/OpenAmber-Thermostat_Thermostaat.png" width="200" alt="Temperatuur"><br>Temperatuur</td>
+    <td align="center"><img src="docs/screenshots/OpenAmber-Thermostat_Menu.png" width="200" alt="Menu"><br>Menu</td>
+    <td align="center"><img src="docs/screenshots/OpenAmber-Thermostat_Overzicht.png" width="200" alt="Overzicht"><br>Overzicht</td>
+    <td align="center"><img src="docs/screenshots/OpenAmber-Thermostat_Schema.png" width="200" alt="Schema"><br>Schema</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/OpenAmber-Thermostat_Foutcodes.png" width="200" alt="Foutcodes"><br>Foutcodes</td>
+    <td align="center"><img src="docs/screenshots/OpenAmber-Thermostat_Modus_Verwarmen.png" width="200" alt="Modus: Verwarmen"><br>Modus: Verwarmen</td>
+    <td align="center"><img src="docs/screenshots/OpenAmber-Thermostat_Modus_Koelen.png" width="200" alt="Modus: Koelen"><br>Modus: Koelen</td>
+    <td align="center"><img src="docs/screenshots/OpenAmber-Thermostat_Modus_Uit.png" width="200" alt="Modus: Uit"><br>Modus: Uit</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/OpenAmber-Thermostat_Koppelen_1.png" width="200" alt="Koppelen: code invoeren"><br>Koppelen: code invoeren</td>
+    <td align="center"><img src="docs/screenshots/OpenAmber-Thermostat_Koppelen_2.png" width="200" alt="Koppelen: gekoppeld"><br>Koppelen: gekoppeld</td>
+    <td align="center"><img src="docs/screenshots/OpenAmber-Thermostat_Instellingen.png" width="200" alt="Instellingen"><br>Instellingen</td>
+    <td></td>
+  </tr>
+</table>
+
 - **Scherm**: gaat 60 seconden na de laatste bediening uit. De eerste druk of draai maakt het alleen wakker.
 - **Pagina-geheugen**: zonder bediening blijft de pagina staan; na 5 minuten gaat hij terug naar Temperatuur.
 - **Schema**: stuurt alleen het verwarmingssetpoint, en alleen in de modus Verwarmen.
@@ -277,8 +300,9 @@ Met de emulator probeer je het scherm uit op je laptop (ESPHome `host` met een S
 esphome run openamber-thermostat-emulator.yaml
 ```
 
-Pijltje links/rechts = draaien, Enter = korte druk, Backspace = lange druk. Er komen geen gegevens van OpenAmber binnen
-en de BME680 geeft vaste waarden. Het bordbestand wordt niet gebruikt; `thermostat/emulator_weg.yaml` haalt weg wat niet
+Pijltje links/rechts = draaien, Enter = korte druk, Backspace = lange druk. De emulator bootst OpenAmber na met vaste
+voorbeeldwaarden voor de sensors en statussen (blok `interval:` in het emulatorbestand); setpoints en modus niet. De BME680
+geeft ook vaste waarden. Het bordbestand wordt niet gebruikt; `thermostat/emulator_weg.yaml` haalt weg wat niet
 op een laptop kan (WiFi, OTA, ESP-NOW, internetklok, sha256).
 
 ## Instellingen die je kunt aanpassen

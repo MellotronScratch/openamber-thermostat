@@ -9,7 +9,7 @@
 #
 # Laadt hetzelfde generieke deel als de echte thermostaat; het bordbestand blijft onaangeroerd.
 # Wat op een laptop niet bestaat (WiFi, ESP-NOW, BME680, ledring) is weggehaald of nagebootst:
-# er komen geen gegevens van OpenAmber binnen, de BME680 geeft vaste voorbeeldwaarden.
+# de sensors van OpenAmber en de BME680 krijgen vaste voorbeeldwaarden (zie "Nagebootste OpenAmber").
 # =====================================================================
 
 packages:
@@ -111,6 +111,40 @@ sensor:
     name: "Gasweerstand"
     update_interval: 60s
     lambda: 'return 120.0;'
+
+# Nagebootste OpenAmber: zet elke 5 s voorbeeldwaarden in de sensors die anders via packet_transport binnenkomen.
+# Eerst de koppelcode, zodat pin_ok en de verbinding aan gaan; daarna komen de andere waarden door hun filter.
+# Setpoints en modus worden niet nagebootst, zodat wat je met de knop instelt blijft staan.
+# Een fout of waarschuwing zien? Zet ec op bijvoorbeeld 214 (F14) en err of warn op true.
+interval:
+  - interval: 5s
+    then:
+      - lambda: |-
+          id(remote_pin).publish_state(0xABC123);   // verzonnen MAC-code van OpenAmber
+          // Temperaturen en meer
+          id(temperature_outside_ta).publish_state(8.5);
+          id(outlet_temperature_tuo).publish_state(35.2);
+          id(inlet_temperature_tui).publish_state(30.4);
+          id(heat_cool_temperature_tc).publish_state(35.0);
+          id(dhw_temperature_tw_sensor).publish_state(48.3);
+          id(rx_tws).publish_state(50.0);
+          id(room_temperature).publish_state(20.8);
+          id(rx_wsp).publish_state(35.0);
+          id(rx_cf).publish_state(42.0);
+          id(rx_ec).publish_state(0);
+          // Statussen
+          id(remote_err).publish_state(false);
+          id(remote_warn).publish_state(false);
+          id(remote_wv).publish_state(true);
+          id(remote_cd).publish_state(false);
+          id(remote_twa).publish_state(true);
+          id(remote_legp).publish_state(true);
+          id(remote_twp).publish_state(false);
+          id(remote_twv).publish_state(false);
+          id(remote_da).publish_state(false);
+          id(remote_lega).publish_state(false);
+          id(remote_dfr).publish_state(false);
+          id(remote_bu).publish_state(false);
 
 # Draaiknop en drukknop op het toetsenbord
 binary_sensor:
