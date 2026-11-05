@@ -663,7 +663,7 @@ script:
           lv_label_set_text(id(schema_hint), hints[scherm]);
 
   # Draaien: kiezen in het overzicht en in de dag, of de waarde veranderen
-  # (tijd per 15 minuten en rond over middernacht, temperatuur per 0,5 graad van 15 tot 25)
+  # (tijd per 15 minuten en rond over middernacht, temperatuur per 0,5 graad van 10 tot 30, zoals de knop)
   - id: schema_draai
     parameters:
       delta: int
@@ -676,7 +676,7 @@ script:
           } else if (id(schema_veld) < 2) {
             id(schema_waarde) = (float) ((((int) id(schema_waarde) + delta * 15) % 1440 + 1440) % 1440);
           } else {
-            id(schema_waarde) = std::max(15.0f, std::min(25.0f, id(schema_waarde) + delta * 0.5f));
+            id(schema_waarde) = std::max(10.0f, std::min(30.0f, id(schema_waarde) + delta * 0.5f));
           }
       - script.execute: schema_render
 

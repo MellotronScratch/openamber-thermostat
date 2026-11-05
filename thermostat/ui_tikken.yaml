@@ -14,14 +14,14 @@
 # (0 tot en met aantal tikken min 1), net als in de eigen kleurfunctie van ESPHome.
 #
 # Bereik van de ring per modus: laag = lege ring, hoog = volle ring. Los van het bereik van de knop
-# (target_low 15-25, target_high 18-30): ligt het setpoint buiten het ringbereik, dan blijft de ring leeg of vol.
+# (target_low en target_high 10-30): ligt het setpoint buiten het ringbereik, dan blijft de ring leeg of vol.
 # Voor een ring die precies meeloopt met de knop: gebruik hier dezelfde grenzen als de knop.
 # =====================================================================
 substitutions:
   ring_min_verwarmen: "10"
   ring_max_verwarmen: "30"
-  ring_min_koelen: "15"
-  ring_max_koelen: "25"
+  ring_min_koelen: "10"
+  ring_max_koelen: "30"
   tik_kleur_begin: "0x2EA8FF"     # eerste lichte tik (blauw)
   tik_kleur_eind: "0xFF4D7E"      # laatste lichte tik (roze)
   tik_kleur_uit: "0x30333B"       # tikken voorbij het setpoint: gelijk aan ticks: color in de Designer

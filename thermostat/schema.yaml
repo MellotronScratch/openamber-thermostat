@@ -170,8 +170,8 @@ number:
   - platform: template
     id: schema_ma_dag_temp
     name: "Schema Maandag temperatuur dag"
-    min_value: 15
-    max_value: 25
+    min_value: 10
+    max_value: 30
     step: 0.5
     initial_value: 20.5
     optimistic: true
@@ -182,8 +182,8 @@ number:
   - platform: template
     id: schema_ma_nacht_temp
     name: "Schema Maandag temperatuur nacht"
-    min_value: 15
-    max_value: 25
+    min_value: 10
+    max_value: 30
     step: 0.5
     initial_value: 19.5
     optimistic: true
@@ -194,8 +194,8 @@ number:
   - platform: template
     id: schema_di_dag_temp
     name: "Schema Dinsdag temperatuur dag"
-    min_value: 15
-    max_value: 25
+    min_value: 10
+    max_value: 30
     step: 0.5
     initial_value: 20.5
     optimistic: true
@@ -206,8 +206,8 @@ number:
   - platform: template
     id: schema_di_nacht_temp
     name: "Schema Dinsdag temperatuur nacht"
-    min_value: 15
-    max_value: 25
+    min_value: 10
+    max_value: 30
     step: 0.5
     initial_value: 19.5
     optimistic: true
@@ -218,8 +218,8 @@ number:
   - platform: template
     id: schema_wo_dag_temp
     name: "Schema Woensdag temperatuur dag"
-    min_value: 15
-    max_value: 25
+    min_value: 10
+    max_value: 30
     step: 0.5
     initial_value: 20.5
     optimistic: true
@@ -230,8 +230,8 @@ number:
   - platform: template
     id: schema_wo_nacht_temp
     name: "Schema Woensdag temperatuur nacht"
-    min_value: 15
-    max_value: 25
+    min_value: 10
+    max_value: 30
     step: 0.5
     initial_value: 19.5
     optimistic: true
@@ -242,8 +242,8 @@ number:
   - platform: template
     id: schema_do_dag_temp
     name: "Schema Donderdag temperatuur dag"
-    min_value: 15
-    max_value: 25
+    min_value: 10
+    max_value: 30
     step: 0.5
     initial_value: 20.5
     optimistic: true
@@ -254,8 +254,8 @@ number:
   - platform: template
     id: schema_do_nacht_temp
     name: "Schema Donderdag temperatuur nacht"
-    min_value: 15
-    max_value: 25
+    min_value: 10
+    max_value: 30
     step: 0.5
     initial_value: 19.5
     optimistic: true
@@ -266,8 +266,8 @@ number:
   - platform: template
     id: schema_vr_dag_temp
     name: "Schema Vrijdag temperatuur dag"
-    min_value: 15
-    max_value: 25
+    min_value: 10
+    max_value: 30
     step: 0.5
     initial_value: 20.5
     optimistic: true
@@ -278,8 +278,8 @@ number:
   - platform: template
     id: schema_vr_nacht_temp
     name: "Schema Vrijdag temperatuur nacht"
-    min_value: 15
-    max_value: 25
+    min_value: 10
+    max_value: 30
     step: 0.5
     initial_value: 19.5
     optimistic: true
@@ -290,8 +290,8 @@ number:
   - platform: template
     id: schema_za_dag_temp
     name: "Schema Zaterdag temperatuur dag"
-    min_value: 15
-    max_value: 25
+    min_value: 10
+    max_value: 30
     step: 0.5
     initial_value: 20.5
     optimistic: true
@@ -302,8 +302,8 @@ number:
   - platform: template
     id: schema_za_nacht_temp
     name: "Schema Zaterdag temperatuur nacht"
-    min_value: 15
-    max_value: 25
+    min_value: 10
+    max_value: 30
     step: 0.5
     initial_value: 19.5
     optimistic: true
@@ -314,8 +314,8 @@ number:
   - platform: template
     id: schema_zo_dag_temp
     name: "Schema Zondag temperatuur dag"
-    min_value: 15
-    max_value: 25
+    min_value: 10
+    max_value: 30
     step: 0.5
     initial_value: 20.5
     optimistic: true
@@ -326,8 +326,8 @@ number:
   - platform: template
     id: schema_zo_nacht_temp
     name: "Schema Zondag temperatuur nacht"
-    min_value: 15
-    max_value: 25
+    min_value: 10
+    max_value: 30
     step: 0.5
     initial_value: 19.5
     optimistic: true

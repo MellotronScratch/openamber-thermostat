@@ -78,7 +78,7 @@ Scherm en bediening
 - B04 Schema: na "Bewaard" of kopiëren wordt het setpoint meteen opnieuw uit het schema gezet; Felix moet nog zeggen of hij dat wil.
 - B05 Schema: ‹ › in de blauwe pil bij wijzigen weggelaten (onzeker of Quicksand die tekens heeft).
 - B06 Schema-titel wijkt af van de andere pagina's (kleiner, grijs `0x8E94A3`), zodat de bovenste rij er niet onder valt.
-- B07 Kamertemperatuurmarker op de ring, instelbare gloedkleur, verloop in de bezel, ringbereik gelijk aan het knopbereik, contrast van tekstkleuren.
+- B07 Kamertemperatuurmarker op de ring, instelbare gloedkleur, verloop in de bezel, contrast van tekstkleuren.
 - B08 Een tweede scherm (Nextion NX4848E021-011C).
 
 Designer
@@ -92,3 +92,4 @@ Firmware
 - B14 Na het flashen in de logs letten op een fout over de pakketgrootte van ESP-NOW.
 - B15 Foutcodes: nu alleen de eerste actieve code (`ec`). Alle codes kan later met twee bitmasker-kanalen vanuit OpenAmber.
 - B16 Het effect "Vat" wordt niet meer gebruikt; eventueel opruimen.
+- B17 Thermostaat valt van de WiFi zodra hij gekoppeld is; vermoedelijk door het effect "Status" (40 ms, ademt als de compressor draait). Ledring staat daarom standaard uit. Proef: trager effect (100-200 ms) of zonder ademen. Ook nog: debug-logging (espnow, packet_transport) terug naar INFO.

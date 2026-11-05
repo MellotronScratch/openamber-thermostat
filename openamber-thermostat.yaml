@@ -538,8 +538,8 @@ number:
   - platform: template            # setpoint verwarmen
     id: target_low
     name: "Setpoint laag"
-    min_value: 15
-    max_value: 25
+    min_value: 10                 # zelfde bereik als het scherm van OpenAmber
+    max_value: 30
     step: 0.5
     initial_value: 20.5
     optimistic: true
@@ -555,7 +555,7 @@ number:
   - platform: template            # setpoint koelen (met de knop te bedienen als de modus Koelen is)
     id: target_high
     name: "Setpoint hoog"
-    min_value: 18                 # gelijk aan thermostat_default_cool_setpoint in OpenAmber
+    min_value: 10                 # zelfde bereik als het scherm van OpenAmber
     max_value: 30
     step: 0.5
     initial_value: 24.0
@@ -588,7 +588,7 @@ switch:
     id: ledring_aan
     name: "Ledring"
     optimistic: true
-    restore_mode: RESTORE_DEFAULT_ON
+    restore_mode: RESTORE_DEFAULT_OFF   # voorlopig standaard uit: het effect "Status" lijkt de thermostaat te zwaar te belasten (B17)
     entity_category: config
     on_turn_on:
       - script.execute: led_update
