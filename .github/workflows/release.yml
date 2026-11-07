@@ -1,0 +1,80 @@
+# Bouwt de firmware en maakt een release zodra er een tag als v0.0.1 gepusht wordt.
+# Geen pre-release: "releases/latest" (waar het update-component kijkt) slaat pre-releases over.
+# Het versienummer in openamber-thermostat.yaml (esphome: project: version) moet gelijk zijn aan de tag.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  ESPHOME_VERSION: "2026.9.1"   # vast: met 2026.10.1 blijft het scherm zwart (zie README)
+  # Borden: de code achter openamber-thermostat- in de naam van het bordbestand. Een nieuw scherm = hier toevoegen.
+  BOARDS: "ZX2D10GE01R-V4848"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: ESPHome installeren
+        run: pip install "esphome==${ESPHOME_VERSION}"
+
+      - name: Versie controleren
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          grep -q "version: \"${VERSION}\"" openamber-thermostat.yaml || {
+            echo "De tag ${GITHUB_REF_NAME} past niet bij esphome: project: version in openamber-thermostat.yaml"; exit 1; }
+
+      - name: Firmware bouwen
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p release
+          for BOARD in ${BOARDS}; do
+            esphome compile "openamber-thermostat-${BOARD}.yaml"
+            OUT=.esphome/build/openamber-thermostat/build
+            cp "${OUT}/firmware.factory.bin" "release/openamber-thermostat-${BOARD}-${VERSION}.factory.bin"
+            cp "${OUT}/firmware.ota.bin"     "release/openamber-thermostat-${BOARD}-${VERSION}.ota.bin"
+            # Manifest voor het update-component (http_request) en ESP Web Tools. Zonder versie in de naam, zodat
+            # .../releases/latest/download/openamber-thermostat-<bord>.manifest.json altijd de nieuwste is.
+            BOARD="${BOARD}" VERSION="${VERSION}" python3 - <<'PY'
+          import hashlib, json, os
+          board, version = os.environ["BOARD"], os.environ["VERSION"]
+          repo, tag = os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_REF_NAME"]
+          base = f"https://github.com/{repo}/releases/download/{tag}"
+          ota = f"openamber-thermostat-{board}-{version}.ota.bin"
+          factory = f"openamber-thermostat-{board}-{version}.factory.bin"
+          md5 = hashlib.md5(open(f"release/{ota}", "rb").read()).hexdigest()
+          manifest = {
+              "name": f"OpenAmber Thermostaat ({board})",
+              "version": version,
+              "home_assistant_domain": "esphome",
+              "new_install_prompt_erase": False,
+              "builds": [{
+                  "chipFamily": "ESP32-S3",
+                  "ota": {
+                      "path": f"{base}/{ota}",
+                      "md5": md5,
+                      "summary": f"OpenAmber Thermostaat {version}",
+                      "release_url": f"https://github.com/{repo}/releases/tag/{tag}",
+                  },
+                  "parts": [{"path": f"{base}/{factory}", "offset": 0}],
+              }],
+          }
+          json.dump(manifest, open(f"release/openamber-thermostat-{board}.manifest.json", "w"), indent=2)
+          PY
+          done
+          ls -l release
+
+      - name: Release maken
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" release/* --title "${GITHUB_REF_NAME}" --generate-notes

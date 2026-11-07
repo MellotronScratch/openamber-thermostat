@@ -43,6 +43,6 @@ hergebruikt. Een afgerond item wordt doorgestreept en blijft staan.
 
 ## Software-update
 
-- **B18** Software-update via GitHub: release-workflow die de firmware bouwt (zonder `secrets.yaml`: API-sleutel en
-  hotspot-wachtwoord dan anders regelen) en een manifest publiceert; de update-pagina laat het update-component
-  (`http_request`) dat manifest lezen.
+- **B18** Software-update via GitHub: de release-workflow bouwt de firmware al (`.github/workflows/release.yml`).
+  Nog te doen: een manifest bij de release publiceren en de update-pagina het update-component (`http_request`) dat
+  manifest laten lezen.

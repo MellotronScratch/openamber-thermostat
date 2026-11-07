@@ -14,11 +14,12 @@
 # zonder MAC-adres: broadcast, versleuteld met een sleutel uit de koppelcode van OpenAmber.
 #
 # Wat er over de lucht gaat (sensors en binary sensors, zie ESPHome packet_transport):
-#   OpenAmber -> hier : tw tws tc tuo tui ta rt (temperaturen), cf (compressorfrequentie Hz), ec (foutcode),
+#   OpenAmber -> hier : pin (MAC-code van OpenAmber), tw tws tc tuo tui ta rt (temperaturen),
+#                       cf (compressorfrequentie Hz), e1 e2 (fout- en waarschuwingsvlaggen als bits), tm (tijd),
 #                       wsp (gewenste aanvoertemperatuur: stooklijn, handmatig of koelen)
-#                       slo shi mode (werkelijke setpoints en modus, 0=uit 1=verwarmen 2=koelen)
+#                       slo shi mode (werkelijke setpoints en modus, ESPHome-getal: 0=uit 2=koelen 3=verwarmen)
 #                       twa err warn legp wv cd twp twv da lega dfr bu (status, binary sensors)
-#   hier -> OpenAmber : bt bh dp (BME680)
+#   hier -> OpenAmber : pin (MAC-code van de gekoppelde OpenAmber), bt bh dp (BME680)
 #                       cmd (commando: volgnummer + modus + setpoints in een getal)
 # De statussen (twa err warn legp wv cd twp twv da lega dfr bu) gaan als binary sensor over;
 # alleen de setpoints en de modus zijn sensors (een climate kan niet rechtstreeks gedeeld worden).
@@ -99,6 +100,9 @@ sha256:                           # sleutel afleiden uit de koppelcode
 esphome:
   name: openamber-thermostat
   friendly_name: OpenAmber Thermostaat
+  project:
+    name: mellotronscratch.openamber-thermostat
+    version: "0.0.1"              # bij elke release verhogen, gelijk aan de tag (v0.0.1)
   on_boot:
     - then:
         - script.execute: reset_backlight_timer
@@ -137,21 +141,21 @@ logger:
     binary_sensor: WARN
     light: WARN
     lvgl: NONE                # alleen aanzetten bij schermproblemen
+# Geen sleutel in de firmware: Home Assistant stelt hem in bij het toevoegen, de thermostaat bewaart hem in flash.
 api:
-  encryption:
-    key: !secret api_key
+  encryption: {}
 
+# Zonder eigen sleutel: zodra Home Assistant de API-sleutel heeft ingesteld, biedt OTA die ook aan.
 ota:
   - platform: esphome
-    encryption:
 
+# Geen WiFi in de firmware: zonder WiFi start de hotspot, en via het captive portal vul je je eigen WiFi in.
+# Die wordt in flash bewaard en blijft staan bij updates. Het wachtwoord van de hotspot is openbaar (README).
 wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
   power_save_mode: none         # anders slaapt de radio tussendoor en gaan ESP-NOW-pakketten verloren (net als OpenAmber)
   ap:
     ssid: OpenAmber Therm Fallback Hotspot
-    password: !secret ap_password
+    password: "openamber"
 
 captive_portal:
 

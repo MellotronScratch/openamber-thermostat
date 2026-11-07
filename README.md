@@ -67,19 +67,15 @@ dat ontwerp opnieuw gemaakt worden.
 De naam in `esphome: name:` (`openamber-thermostat`) staat in het generieke deel en moet voor alle borden gelijk blijven,
 omdat OpenAmber de thermostaat daaraan herkent.
 
-Benodigd in `secrets.yaml`:
+Er is geen `secrets.yaml` nodig; er staat niets geheims in de firmware:
 
-```yaml
-wifi_ssid: "..."
-wifi_password: "..."
-api_key: "..."        # 32 bytes base64, bijvoorbeeld: openssl rand -base64 32
-ap_password: "..."    # wachtwoord van de fallback-hotspot
-```
-
-Een sleutel voor ESP-NOW hoort niet in `secrets.yaml`: die wordt afgeleid uit de koppelcode (zie Koppelen). De basis
-daarvoor is de substitution `thermostat_link_key` in `openamber-thermostat.yaml` (standaard `openamber-thermostat-link`,
-gelijk aan de standaard in OpenAmber); die is openbaar en hoeft niet geheim te blijven. Een oude regel `espnow_key` in
-`secrets.yaml` wordt niet meer gebruikt en mag weg.
+- **WiFi**: niet in de firmware. De gebruiker vult zijn WiFi in via de hotspot (zie Eerste keer instellen).
+- **API-sleutel**: niet in de firmware (`api: encryption: {}`). Home Assistant stelt hem in bij het toevoegen en de
+  thermostaat bewaart hem. OTA biedt daarna dezelfde sleutel aan.
+- **Hotspot**: het wachtwoord is openbaar (zie Eerste keer instellen).
+- **ESP-NOW**: de sleutel wordt afgeleid uit de koppelcode (zie Koppelen). De basis daarvoor is de substitution
+  `thermostat_link_key` in `openamber-thermostat.yaml` (standaard `openamber-thermostat-link`, gelijk aan de standaard
+  in OpenAmber); die is openbaar.
 
 ## Hoe de communicatie werkt
 
@@ -296,12 +292,50 @@ de ring uit en staan Ledring en Helderheid grijs in Instellingen.
 
 ## Flashen
 
-- **Eerste keer of bij een kapotte bootloader**: via USB, met `firmware.factory.bin` (bijvoorbeeld via web.esphome.io).
+De kant-en-klare firmware staat bij de [releases](https://github.com/MellotronScratch/openamber-thermostat/releases),
+per scherm en versie:
+
+```
+openamber-thermostat-ZX2D10GE01R-V4848-0.0.1.factory.bin   eerste keer, via USB
+openamber-thermostat-ZX2D10GE01R-V4848-0.0.1.ota.bin       update via WiFi
+```
+
+- **Eerste keer of bij een kapotte bootloader**: via USB, met het `factory`-bestand (bijvoorbeeld via web.esphome.io).
   Het `ota`-bestand heeft geen bootloader en maakt het apparaat onbruikbaar als je het op die manier flasht.
 - **Daarna**: draadloos, via ESPHome Builder (Install, Wirelessly) of `esphome run <bestand.yaml> --device <ip>`.
   Een al gecompileerde build upload je met `esphome upload <bestand.yaml> --device <ip>`; die compileert niet.
 - **Volgorde bij wijzigingen aan beide kanten**: eerst OpenAmber, dan de thermostaat.
 - De `web_server` staat uit; die gebruikt veel geheugen.
+
+### Eerste keer instellen
+
+1. Zonder WiFi start de thermostaat binnen een minuut de hotspot **OpenAmber Therm Fallback Hotspot**, wachtwoord
+   **`openamber`**.
+2. Verbind met je telefoon of laptop met de hotspot. Er opent vanzelf een pagina (anders: ga naar http://192.168.4.1) met
+   de WiFi-netwerken in de buurt. Kies je netwerk, vul het wachtwoord in en klik op Save.
+3. De thermostaat maakt verbinding met je WiFi en bewaart de gegevens; ze blijven staan bij updates. Is je WiFi een keer
+   niet te bereiken, dan start de hotspot weer.
+4. In Home Assistant verschijnt de thermostaat als nieuw ESPHome-apparaat. Bij het toevoegen stelt Home Assistant de
+   API-sleutel in.
+5. Koppel de thermostaat met OpenAmber (zie Koppelen).
+
+Let op: zolang er geen API-sleutel is ingesteld, en daarna zonder versleuteling, neemt OTA een update aan van iedereen
+op je netwerk. Dat is bij de meeste ESPHome-firmware zo.
+
+### Een release maken
+
+1. Verhoog `version` onder `esphome: project:` in `openamber-thermostat.yaml` (bijvoorbeeld `"0.0.2"`) en commit.
+2. Zet een tag met hetzelfde nummer en push hem: `git tag v0.0.2` en `git push origin v0.0.2`.
+3. GitHub bouwt de firmware (`.github/workflows/release.yml`, met ESPHome 2026.9.1) en maakt een release met de
+   bestanden. Klopt de tag niet met de versie in de yaml, dan stopt de build.
+
+Bij elke release hoort per scherm een manifest, `openamber-thermostat-<bord>.manifest.json`, met de versie en de link
+naar het `ota`-bestand. De nieuwste staat altijd op
+`https://github.com/MellotronScratch/openamber-thermostat/releases/latest/download/openamber-thermostat-<bord>.manifest.json`;
+daar kan de update-pagina kijken (B18).
+
+Een nieuw scherm voeg je toe aan `BOARDS` in de workflow; de naam is het deel achter `openamber-thermostat-` in de
+naam van het bordbestand.
 
 ## Emulator
 
