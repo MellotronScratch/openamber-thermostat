@@ -6,6 +6,8 @@
 wifi: !remove
 captive_portal: !remove
 ota: !remove
+http_request: !remove
+update: !remove
 espnow: !remove
 sha256: !remove                     # heeft OpenSSL nodig op de laptop; de sleutel uit de koppelcode is hier niet nodig
 

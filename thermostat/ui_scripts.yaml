@@ -12,7 +12,7 @@
 #   5 = Schema       schema_canvas     nachtverlaging per weekdag instellen
 #   6 = Foutcodes    fout_canvas       eerste actieve fout of waarschuwing met de tekst van OpenAmber
 #   7 = Instellingen inst_canvas       carrousel: ledring, helderheid, thema, sensor, software-update
-#   8 = Update       update_canvas     software-update (de bron op GitHub volgt nog)
+#   8 = Update       update_canvas     software-update vanaf GitHub (update-component firmware_update)
 #
 # Knop:  Temperatuur: korte druk = menu          Menu: korte druk = het gekozen item openen
 #        Modus: korte druk = bevestigen          Koppelen: korte druk = bevestigen
@@ -484,11 +484,7 @@ script:
           value: '8'
       - lambda: |-
           id(update_sel) = 0;
-          // Geïnstalleerde firmware: datum en tijd van het compileren
-          char b[Application::BUILD_TIME_STR_SIZE];
-          App.get_build_time_string(b);
-          lv_label_set_text(id(update_huidig), b);
-          lv_label_set_text(id(update_nieuw), "--");
+          lv_label_set_text(id(update_huidig), ESPHOME_PROJECT_VERSION);   // versie uit esphome: project:
           lv_label_set_text(id(update_status), "");
       - script.execute: update_render
       - lvgl.page.show: update_canvas
@@ -987,13 +983,33 @@ script:
 
   # ---------------------------------------------------------------------
   # Update-pagina: geïnstalleerde versie, beschikbare versie en een knop.
-  # Er staat nog geen firmware op GitHub; de knop meldt dat er nog geen updatebron is.
-  # Later: update-component (http_request) met het manifest van de laatste GitHub-release.
+  # De knop zoekt naar een update (manifest van de nieuwste GitHub-release) of installeert hem.
+  # update_render wordt elke 2 s aangeroepen zolang de pagina open is (interval in openamber-thermostat.yaml).
   # ---------------------------------------------------------------------
   - id: update_render
     then:
       - lambda: |-
           bool knop = id(update_sel) == 0;
+          #ifdef USE_UPDATE
+          auto *u = firmware_update;      // zonder id(): de emulator heeft geen update-component
+          const auto &info = u->update_info;
+          lv_label_set_text(id(update_nieuw), info.latest_version.empty() ? "--" : info.latest_version.c_str());
+          const char *knop_tekst = "Zoek naar update";
+          std::string status;
+          switch (u->state) {
+            case update::UPDATE_STATE_AVAILABLE:  status = "Nieuwe versie beschikbaar"; knop_tekst = "Installeren"; break;
+            case update::UPDATE_STATE_NO_UPDATE:  status = "Je hebt de nieuwste versie"; break;
+            case update::UPDATE_STATE_INSTALLING:
+              status = info.has_progress ? str_sprintf("Installeren... %.0f%%", info.progress) : "Installeren...";
+              knop_tekst = "Bezig...";
+              break;
+            default:                      // nog niet gezocht: de tekst van update_druk blijft staan
+              if (u->status_has_error()) status = "Zoeken mislukt";
+              break;
+          }
+          lv_label_set_text(id(update_knop_label), knop_tekst);
+          if (!status.empty()) lv_label_set_text(id(update_status), status.c_str());
+          #endif
           lv_obj_set_style_bg_opa(id(update_knop), knop ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
           lv_obj_set_style_border_opa(id(update_knop), knop ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
           lv_obj_set_style_bg_opa(id(update_terug), knop ? LV_OPA_TRANSP : LV_OPA_COVER, 0);
@@ -1003,7 +1019,20 @@ script:
     then:
       - lambda: |-
           if (id(update_sel) == 1) { id(show_inst).execute(); return; }
-          lv_label_set_text(id(update_status), "Nog geen updatebron ingesteld");
+          #ifdef USE_UPDATE
+          auto *u = firmware_update;      // zonder id(): de emulator heeft geen update-component
+          if (u->state == update::UPDATE_STATE_INSTALLING) return;
+          if (u->state == update::UPDATE_STATE_AVAILABLE) {
+            lv_label_set_text(id(update_status), "Installeren...");
+            u->perform(false);            // downloadt, flasht en herstart
+          } else {
+            lv_label_set_text(id(update_status), "Zoeken...");
+            u->check();
+          }
+          #else
+          lv_label_set_text(id(update_status), "Niet beschikbaar in de emulator");
+          #endif
+      - script.execute: update_render
 
   # Kleurthema toepassen: achtergrondverloop van alle pagina's en de accentkleur
   - id: thema_toepassen

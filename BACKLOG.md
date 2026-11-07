@@ -38,11 +38,15 @@ hergebruikt. Een afgerond item wordt doorgestreept en blijft staan.
   interval, daarna weer beschikbaar maken. Waarschijnlijk ook de oorzaak van B01.
   Let op: daarna viel de thermostaat ook met de ring uit nog een paar keer van de WiFi (niet bereikbaar voor OTA en ping).
   De ring is dus waarschijnlijk niet de enige oorzaak; nog uitzoeken (bijvoorbeeld een log over langere tijd).
+- **B21** De thermostaat valt geregeld van het netwerk (geen ping, geen OTA, niet via mDNS) en komt pas terug na
+  stroomloos maken. Ook gezien bij OTA-uploads die halverwege afbreken. Mogelijk dezelfde oorzaak als B17; uitzoeken met
+  een log over langere tijd (bijvoorbeeld via USB).
 - **B19** Bij "Geen verbinding" blijven de waarden van OpenAmber (temperaturen, setpoint) staan met hun laatste waarde;
   liever leeg tonen ("--") zolang er geen verbinding is.
 
 ## Software-update
 
-- **B18** Software-update via GitHub: de release-workflow bouwt de firmware al (`.github/workflows/release.yml`).
-  Nog te doen: een manifest bij de release publiceren en de update-pagina het update-component (`http_request`) dat
-  manifest laten lezen.
+- **B18** Software-update via GitHub: release-workflow met manifest en de update-pagina met het update-component
+  (`http_request`) zijn er (0.0.2). Nog testen: updaten naar 0.0.3 via de pagina.
+- **B20** Koppelpagina: ben je al gekoppeld, dan eerst de huidige koppeling tonen (koppelcode en gekoppelde OpenAmber),
+  met de keuze om opnieuw te koppelen met een nieuwe code. Nu kom je meteen in het invoeren van een code. Voor 0.0.3.

@@ -12,7 +12,8 @@ permissions:
 
 env:
   ESPHOME_VERSION: "2026.9.1"   # vast: met 2026.10.1 blijft het scherm zwart (zie README)
-  # Borden: de code achter openamber-thermostat- in de naam van het bordbestand. Een nieuw scherm = hier toevoegen.
+  # Borden: de code achter openamber-thermostat- in de naam van het bordbestand, gelijk aan substitution "bord"
+  # in dat bordbestand. Een nieuw scherm = hier toevoegen.
   BOARDS: "ZX2D10GE01R-V4848"
 
 jobs:

@@ -1,5 +1,5 @@
 # =====================================================================
-# OpenAmber thermostaat - bordbestand voor WT32S3-21S (ZX2D10GE01R-W4848#B)
+# OpenAmber thermostaat - bordbestand voor WT32S3-21S (ZX2D10GE01R-V4848)
 # WT32-S3-WROVER, 16 MB flash, 8 MB PSRAM, scherm ZX2D10GE01R-V4848 (480x480), zonder touch
 #
 # Dit is het bestand dat je compileert. Het bevat alleen wat bij dit bord hoort
@@ -8,6 +8,7 @@
 # =====================================================================
 
 substitutions:
+  bord: ZX2D10GE01R-V4848         # naam van het bord in de release-bestanden en het manifest (zie .github/workflows/release.yml)
   led_bodem: "8.5"                # positie onderaan de ring: tussen led 8 en led 9 (led 2 zit bovenaan); zie ledtest
 
 packages:
@@ -24,7 +25,7 @@ psram:
   speed: 80MHz
 
 # ---------------------------------------------------------------------
-# 2. GPIO-OVERZICHT  WT32S3-21S (ZX2D10GE01R-W4848#B), zonder touch
+# 2. GPIO-OVERZICHT  WT32S3-21S (ZX2D10GE01R-V4848), zonder touch
 # ---------------------------------------------------------------------
 # GPIO0   BOOT-knop (strapping) / RGB_D2          (scherm-model)
 # GPIO1   EXT_IO4 -> I2C SCL, BME680 (adres 0x77) (i2c)

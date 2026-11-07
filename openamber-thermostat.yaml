@@ -2,7 +2,7 @@
 # OpenAmber thermostaat - generiek deel (alles wat niet van het scherm of bord afhangt)
 #
 # Dit bestand compileert niet alleen. Het wordt geladen door een bordbestand, bijvoorbeeld
-# openamber-thermostat-ZX2D10GE01R-V4848.yaml (WT32S3-21S, ZX2D10GE01R-W4848#B), dat de hardware levert.
+# openamber-thermostat-ZX2D10GE01R-V4848.yaml (WT32S3-21S, ZX2D10GE01R-V4848), dat de hardware levert.
 #
 # Het bordbestand moet leveren:
 #   display, lvgl.buffer_size, light 'backlight' en 'status_leds' (met effect "Status"),
@@ -39,6 +39,8 @@ substitutions:
   # Basis voor de ESP-NOW-sleutel; de sleutel zelf wordt afgeleid uit de koppelcode van OpenAmber.
   # Moet gelijk zijn aan thermostat_link_key in OpenAmber (src/openamber/thermostat_link/thermostat_link.yaml).
   thermostat_link_key: openamber-thermostat-link
+  # Bord: het bordbestand zet dit (bijvoorbeeld ZX2D10GE01R-V4848); bepaalt welk manifest de update-pagina leest.
+  bord: onbekend
   ledring_beschikbaar: "false"    # ledring voorlopig uit en grijs in Instellingen (geeft glitches en WiFi-uitval, B17)
   vat_leeg: "20"                  # tapwatertemperatuur waarbij het vat als leeg getoond wordt (graden)
   condens_marge: "2"              # waarschuwen als de aanvoer minder dan zoveel graden boven het dauwpunt komt (bij koelen)
@@ -102,7 +104,7 @@ esphome:
   friendly_name: OpenAmber Thermostaat
   project:
     name: mellotronscratch.openamber-thermostat
-    version: "0.0.1"              # bij elke release verhogen, gelijk aan de tag (v0.0.1)
+    version: "0.0.2"              # bij elke release verhogen, gelijk aan de tag (v0.0.2)
   on_boot:
     - then:
         - script.execute: reset_backlight_timer
@@ -148,6 +150,22 @@ api:
 # Zonder eigen sleutel: zodra Home Assistant de API-sleutel heeft ingesteld, biedt OTA die ook aan.
 ota:
   - platform: esphome
+  - platform: http_request        # nodig voor de update vanaf GitHub
+
+# Software-update vanaf GitHub: het manifest van de nieuwste release voor dit bord (zie README, Een release maken).
+http_request:
+  timeout: 20s
+  # GitHub stuurt lange headers (een van ruim 4000 tekens) en een doorverwijzing van bijna 1000 tekens;
+  # met de standaard 512 bytes mislukt het ophalen van het manifest.
+  buffer_size_rx: 8192
+  buffer_size_tx: 2048
+
+update:
+  - platform: http_request
+    id: firmware_update
+    name: Firmware
+    source: https://github.com/MellotronScratch/openamber-thermostat/releases/latest/download/openamber-thermostat-${bord}.manifest.json
+    update_interval: 6h
 
 # Geen WiFi in de firmware: zonder WiFi start de hotspot, en via het captive portal vul je je eigen WiFi in.
 # Die wordt in flash bewaard en blijft staan bij updates. Het wachtwoord van de hotspot is openbaar (README).
@@ -553,9 +571,9 @@ sensor:
 # 5. BEDIENING (setpoints en modus)
 # ---------------------------------------------------------------------
 text:
-  - platform: template            # code van de OpenAmber waarmee deze thermostaat praat
+  - platform: template            # MAC-code van de OpenAmber waarmee deze thermostaat praat
     id: pair_code
-    name: "Koppelcode OpenAmber"
+    internal: true                # in Home Assistant alleen te zien (text_sensor gekoppelde_openamber)
     # Wordt vanzelf gevuld met de laatste 6 tekens van het MAC-adres van de eerste OpenAmber
     # die na het invoeren van de koppelcode gehoord wordt; leeg = nog niet vastgelegd.
     mode: text
@@ -564,11 +582,20 @@ text:
     initial_value: ""
     optimistic: true
     restore_value: true           # blijft bewaard na herstart en update
-    entity_category: config
     on_value:
       then:
         - script.execute: pin_check
         - component.update: pin_out
+        - component.update: gekoppelde_openamber
+
+text_sensor:
+  - platform: template            # alleen-lezen kopie van pair_code voor Home Assistant
+    id: gekoppelde_openamber
+    name: "Gekoppelde OpenAmber"
+    icon: mdi:link-variant
+    entity_category: diagnostic
+    update_interval: 60s
+    lambda: 'return id(pair_code).state;'
 
 number:
   - platform: template            # setpoint verwarmen
@@ -876,6 +903,11 @@ interval:
             lambda: 'return id(knob_context) == 4;'
           then:
             - script.execute: update_overzicht      # waarden op de overzichtspagina
+      - if:
+          condition:
+            lambda: 'return id(knob_context) == 8;'
+          then:
+            - script.execute: update_render         # status van de software-update
       - if:
           condition:
             lambda: 'return id(knob_context) == 6;'

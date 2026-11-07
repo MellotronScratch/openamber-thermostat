@@ -264,7 +264,9 @@ Zo zien de pagina's eruit (uit de emulator, met de voorbeeldwaarden van de nageb
 - **Sensor** (Instellingen): welke kamertemperatuur het scherm toont, Tr van OpenAmber of de eigen BME680.
   OpenAmber regelt altijd op Tr.
 - **Thema** (Instellingen): achtergrondverloop en accentkleur (Paars, Oranje, Groen, Blauw, Grijs).
-- **Software-update** (Instellingen): de pagina is er, maar er is nog geen updatebron.
+- **Software-update** (Instellingen): toont de geïnstalleerde en de nieuwste versie op GitHub. De knop zoekt naar een
+  update, of installeert hem als er een nieuwere is; de thermostaat herstart daarna vanzelf. Hij zoekt ook zelf elke 6 uur.
+  In Home Assistant staat dezelfde update als entiteit "Firmware".
 
 **Statusiconen** (Temperatuur en Overzicht): de actieve modus (voorrang: ontdooien, legionella, tapwater, koelen,
 verwarmen, standby), backupelement, fout (rood) of waarschuwing (oranje), en geen verbinding als er de afgelopen minuut
@@ -332,10 +334,11 @@ op je netwerk. Dat is bij de meeste ESPHome-firmware zo.
 Bij elke release hoort per scherm een manifest, `openamber-thermostat-<bord>.manifest.json`, met de versie en de link
 naar het `ota`-bestand. De nieuwste staat altijd op
 `https://github.com/MellotronScratch/openamber-thermostat/releases/latest/download/openamber-thermostat-<bord>.manifest.json`;
-daar kan de update-pagina kijken (B18).
+daar kijkt de update-pagina.
 
 Een nieuw scherm voeg je toe aan `BOARDS` in de workflow; de naam is het deel achter `openamber-thermostat-` in de
-naam van het bordbestand.
+naam van het bordbestand, en moet gelijk zijn aan de substitution `bord` in dat bordbestand (daarmee kiest de
+update-pagina het juiste manifest).
 
 ## Emulator
 
