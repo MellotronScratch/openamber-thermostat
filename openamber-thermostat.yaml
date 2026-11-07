@@ -408,6 +408,8 @@ sensor:
     filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
       - lambda: 'if (id(pin_ok)) return x; return NAN;'
     internal: true
+    on_value:                   # de frequentie staat in de rij met iconen op de temperatuurpagina
+      - script.execute: update_status_icons
 
   # Actieve fouten en waarschuwingen: één bit per code (bron op OpenAmber: thermostat_link_errors_1/_2).
   # De volgorde van de bits staat in het script fout_bijwerken.

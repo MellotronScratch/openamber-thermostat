@@ -24,6 +24,7 @@ De koppeling aan de OpenAmber-kant staat in OpenAmber zelf
 11. [Emulator](#emulator)
 12. [Instellingen die je kunt aanpassen](#instellingen-die-je-kunt-aanpassen)
 13. [Bekende problemen en valkuilen](#bekende-problemen-en-valkuilen)
+14. [Licentie](#licentie)
 
 Wat nog op de planning staat: zie [BACKLOG.md](BACKLOG.md). Hoe de koppeling werkt en welke bestanden erbij horen (ook in OpenAmber): zie [docs/werking.md](docs/werking.md).
 
@@ -385,3 +386,22 @@ kamer (gemeten door de BME680) komt. De uitkomst staat in de globale `condens_wa
 - **Het pad in `packages:`** is relatief aan de map van het hoofdbestand. "No such file or directory" betekent bijna altijd
   een verkeerd pad of een verkeerde bestandsnaam.
 - **Logniveau**: zet `espnow` niet op `DEBUG` of `VERBOSE`; dat geeft te veel logregels en kost geheugen. `lvgl` alleen aan als je een schermprobleem zoekt.
+
+## Licentie
+
+Dit project valt onder de **GNU General Public License v3.0** (zie [LICENSE](LICENSE)), net als
+[OpenAmber](https://github.com/Jordi1990/openamber). Je mag het gebruiken, aanpassen en verder verspreiden, zolang je de
+broncode van je versie ook onder deze licentie beschikbaar stelt.
+
+Dit is een eigen project dat met OpenAmber samenwerkt; het is geen officieel product van OpenAmber of van de fabrikant
+van de warmtepomp.
+
+In de firmware zitten onderdelen van anderen, elk met hun eigen licentie:
+
+| Onderdeel | Licentie |
+|---|---|
+| [ESPHome](https://esphome.io) | MIT (C++-code in de firmware), GPL-3.0 (Python-code) |
+| [ESP-IDF](https://github.com/espressif/esp-idf) van Espressif | Apache 2.0 |
+| [LVGL](https://lvgl.io) | MIT |
+| Lettertype [Quicksand](https://fonts.google.com/specimen/Quicksand) | SIL Open Font License 1.1 |
+| [Material Design Icons](https://pictogrammers.com/library/mdi/) | Pictogrammers Free License |

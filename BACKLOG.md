@@ -15,6 +15,11 @@ hergebruikt. Een afgerond item wordt doorgestreept en blijft staan.
 - **B06** Schema-titel wijkt af van de andere pagina's (kleiner, grijs `0x8E94A3`), zodat de bovenste rij er niet onder valt.
 - **B07** Kamertemperatuurmarker op de ring, instelbare gloedkleur, verloop in de bezel, contrast van tekstkleuren.
 - **B08** Een tweede scherm (Nextion NX4848E021-011C).
+- **B22** Instelling "Groot in beeld": doeltemperatuur of kamertemperatuur groot in het midden (de andere klein eronder).
+  Idee: bij draaien tijdelijk de doeltemperatuur groot, na een paar seconden terug; bij de kleine temperatuur "Doel" of
+  "Kamer" zetten. De ring blijft de doeltemperatuur tonen.
+- **B23** Nieuw menu-item "Informatie", in elk geval met een QR-code naar de repository (README). Welke informatie er
+  verder op komt, nog bedenken.
 
 ## Designer
 

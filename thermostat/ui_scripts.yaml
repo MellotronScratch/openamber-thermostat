@@ -117,16 +117,16 @@ esphome:
   on_boot:
     - priority: -101              # nadat LVGL en de pagina's er zijn
       then:
-        # Diagonaal kleurverloop op de achtergrond van elke pagina
-        - lvgl.widget.update: {id: climate_background, bg_grad: achtergrond_verloop}
-        - lvgl.widget.update: {id: carrousel_background, bg_grad: achtergrond_verloop}
-        - lvgl.widget.update: {id: overzicht_background, bg_grad: achtergrond_verloop}
-        - lvgl.widget.update: {id: modus_background, bg_grad: achtergrond_verloop}
-        - lvgl.widget.update: {id: pair_background, bg_grad: achtergrond_verloop}
-        - lvgl.widget.update: {id: schema_background, bg_grad: achtergrond_verloop}
-        - lvgl.widget.update: {id: fout_background, bg_grad: achtergrond_verloop}
-        - lvgl.widget.update: {id: inst_background, bg_grad: achtergrond_verloop}
-        - lvgl.widget.update: {id: update_background, bg_grad: achtergrond_verloop}
+        # Diagonaal kleurverloop op de achtergrond van elke pagina, zonder de standaardrand van LVGL (2 px lichtgrijs)
+        - lvgl.widget.update: {id: climate_background, bg_grad: achtergrond_verloop, border_width: 0}
+        - lvgl.widget.update: {id: carrousel_background, bg_grad: achtergrond_verloop, border_width: 0}
+        - lvgl.widget.update: {id: overzicht_background, bg_grad: achtergrond_verloop, border_width: 0}
+        - lvgl.widget.update: {id: modus_background, bg_grad: achtergrond_verloop, border_width: 0}
+        - lvgl.widget.update: {id: pair_background, bg_grad: achtergrond_verloop, border_width: 0}
+        - lvgl.widget.update: {id: schema_background, bg_grad: achtergrond_verloop, border_width: 0}
+        - lvgl.widget.update: {id: fout_background, bg_grad: achtergrond_verloop, border_width: 0}
+        - lvgl.widget.update: {id: inst_background, bg_grad: achtergrond_verloop, border_width: 0}
+        - lvgl.widget.update: {id: update_background, bg_grad: achtergrond_verloop, border_width: 0}
         # Icoonfonts met alle glyphs die het script nodig heeft (zie ui_fonts.yaml)
         - lvgl.widget.update: {id: carrousel_menu_icon_1, text_font: menu_icons_28}
         - lvgl.widget.update: {id: carrousel_menu_icon_2, text_font: menu_icons_33}
@@ -134,6 +134,13 @@ esphome:
         - lvgl.widget.update: {id: carrousel_menu_icon_4, text_font: menu_icons_33}
         - lvgl.widget.update: {id: carrousel_menu_icon_5, text_font: menu_icons_28}
         - lvgl.widget.update: {id: climate_icon_heatcool, text_font: menu_icons_40}
+        # Compressor: de frequentie als tekst in plaats van het icoon. De tekst is breder dan het vak van 40 px,
+        # daarom wordt de rij met iconen 60 px breder naar rechts (de iconen blijven op hun plek).
+        - lvgl.widget.update: {id: climate_icon_compressor, text_font: quicksand_24}
+        - lambda: |-
+            lv_obj_set_width(id(climate_iconrow), 220);
+            lv_obj_align(id(climate_iconrow), LV_ALIGN_CENTER, 30, 100);
+            lv_obj_align(id(climate_icon_compressor), LV_ALIGN_LEFT_MID, 124, 0);
         - lvgl.widget.update: {id: modus_icon, text_font: modus_icons_80}
         - lvgl.widget.update: {id: fout_icon, text_font: fout_icons_80}
         - globals.set:
@@ -170,8 +177,12 @@ script:
           // Backupelement (bliksem)
           toon(id(climate_icon_backupheater), link && on(id(remote_bu)));
 
-          // Compressor draait (warmtepomp-icoon)
+          // Compressor draait: de frequentie, oranje bij verwarmen en blauw bij koelen
           toon(id(climate_icon_compressor), draait);
+          if (draait) {
+            lv_label_set_text(id(climate_icon_compressor), str_sprintf("%d Hz", (int) lroundf(cf)).c_str());
+            kleur(id(climate_icon_compressor), on(id(remote_cd)) ? 0x2EA8FF : 0xFF5100);
+          }
 
           // Op dezelfde plek: legionellarun (bacterie) gaat voor tapwater (kraan).
           // Het kraantje is blauw zolang er tapwater wordt gemaakt, anders gedimd.
@@ -671,9 +682,9 @@ script:
               lv_label_set_text(waarde[r], buf);
               if (wijzig) pil(waarde[r], id(accent_kleur), 0x0C0D10);
               else kaal(waarde[r], 0xE8EAF0, LV_ALIGN_RIGHT_MID, -6);   // -6: de label heeft zelf 16 px padding
-            } else {                                 // Kopieer naar alle dagen
+            } else {                                 // Naar alle dagen kopiëren
               toon(naam[r], false); toon(bar[r], false); toon(dagt[r], false); toon(nacht[r], false); toon(waarde[r], true);
-              lv_label_set_text(waarde[r], "Kopieer naar alle dagen");
+              lv_label_set_text(waarde[r], "Naar alle dagen");
               kaal(waarde[r], id(accent_kleur), LV_ALIGN_CENTER, 0);
             }
           }

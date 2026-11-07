@@ -950,31 +950,32 @@ lvgl:
             radius: 999
             pad_all: 0
             scrollbar_mode: "OFF"
-
-        - label:
-            id: schema_title
-            x: 0
-            y: 38
-            width: 300
-            align: TOP_MID
-            text: "SCHEMA"
-            text_color: 0x8E94A3
-            text_align: CENTER
-            text_font: quicksand_24
+            widgets:
+              - label:
+                  id: schema_title
+                  x: 0
+                  y: 25
+                  width: 260
+                  height: 45
+                  align: TOP_MID
+                  text: "SCHEMA"
+                  text_color: 0x30333B
+                  text_align: CENTER
+                  text_font: quicksand_30
 
         - obj:
             id: schema_rij_1
             x: 0
-            y: -136
-            width: 270
-            height: 64
+            y: -119
+            width: 290
+            height: 58
             align: CENTER
             bg_color: 0x23262F
             bg_opa: 0%
             border_width: 2
             border_color: 0x2EA8FF
             border_opa: 0%
-            radius: 32
+            radius: 29
             opa: 30%
             pad_all: 0
             scrollbar_mode: "OFF"
@@ -987,7 +988,7 @@ lvgl:
                   align: LEFT_MID
                   text: "Zo"
                   text_color: 0xE8EAF0
-                  text_font: quicksand_28b
+                  text_font: quicksand_28
               - bar:
                   id: schema_rij_1_bar
                   x: 74
@@ -1008,24 +1009,24 @@ lvgl:
                     radius: 0
               - label:
                   id: schema_rij_1_dagtemp
-                  x: -92
+                  x: -100
                   y: 0
-                  width: 62
+                  width: 74
                   align: RIGHT_MID
                   text: "20,5°"
                   text_color: 0xFF4D7E
                   text_align: RIGHT
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
               - label:
                   id: schema_rij_1_nachttemp
                   x: -22
                   y: 0
-                  width: 62
+                  width: 74
                   align: RIGHT_MID
                   text: "19,5°"
                   text_color: 0x2EA8FF
                   text_align: RIGHT
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
               - label:
                   id: schema_rij_1_waarde
                   x: -22
@@ -1033,7 +1034,7 @@ lvgl:
                   align: RIGHT_MID
                   text: "Aan"
                   text_color: 0x0C0D10
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
                   bg_color: 0x2EA8FF
                   bg_opa: 100%
                   radius: 16
@@ -1046,16 +1047,16 @@ lvgl:
         - obj:
             id: schema_rij_2
             x: 0
-            y: -68
+            y: -57
             width: 340
-            height: 64
+            height: 58
             align: CENTER
             bg_color: 0x23262F
             bg_opa: 0%
             border_width: 2
             border_color: 0x2EA8FF
             border_opa: 0%
-            radius: 32
+            radius: 29
             opa: 60%
             pad_all: 0
             scrollbar_mode: "OFF"
@@ -1067,12 +1068,12 @@ lvgl:
                   align: LEFT_MID
                   text: "Schema"
                   text_color: 0xE8EAF0
-                  text_font: quicksand_28b
+                  text_font: quicksand_28
               - bar:
                   id: schema_rij_2_bar
                   x: 74
                   y: 0
-                  width: 100
+                  width: 80
                   height: 12
                   align: LEFT_MID
                   mode: RANGE
@@ -1089,25 +1090,25 @@ lvgl:
                   hidden: true
               - label:
                   id: schema_rij_2_dagtemp
-                  x: -92
+                  x: -100
                   y: 0
-                  width: 62
+                  width: 74
                   align: RIGHT_MID
                   text: "20,5°"
                   text_color: 0xFF4D7E
                   text_align: RIGHT
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
                   hidden: true
               - label:
                   id: schema_rij_2_nachttemp
                   x: -22
                   y: 0
-                  width: 62
+                  width: 74
                   align: RIGHT_MID
                   text: "19,5°"
                   text_color: 0x2EA8FF
                   text_align: RIGHT
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
                   hidden: true
               - label:
                   id: schema_rij_2_waarde
@@ -1116,7 +1117,7 @@ lvgl:
                   align: RIGHT_MID
                   text: "Aan"
                   text_color: 0x0C0D10
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
                   bg_color: 0x2EA8FF
                   bg_opa: 100%
                   radius: 16
@@ -1128,14 +1129,14 @@ lvgl:
         - obj:
             id: schema_rij_3
             x: 0
-            y: 0
+            y: 5
             width: 372
-            height: 64
+            height: 58
             align: CENTER
             bg_color: 0x23262F
             border_width: 2
             border_color: 0x2EA8FF
-            radius: 32
+            radius: 29
             opa: 100%
             pad_all: 0
             scrollbar_mode: "OFF"
@@ -1147,12 +1148,12 @@ lvgl:
                   align: LEFT_MID
                   text: "Ma"
                   text_color: 0xE8EAF0
-                  text_font: quicksand_28b
+                  text_font: quicksand_28
               - bar:
                   id: schema_rij_3_bar
                   x: 74
                   y: 0
-                  width: 132
+                  width: 112
                   height: 12
                   align: LEFT_MID
                   mode: RANGE
@@ -1168,24 +1169,24 @@ lvgl:
                     radius: 0
               - label:
                   id: schema_rij_3_dagtemp
-                  x: -92
+                  x: -100
                   y: 0
-                  width: 62
+                  width: 74
                   align: RIGHT_MID
                   text: "20,5°"
                   text_color: 0xFF4D7E
                   text_align: RIGHT
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
               - label:
                   id: schema_rij_3_nachttemp
                   x: -22
                   y: 0
-                  width: 62
+                  width: 74
                   align: RIGHT_MID
                   text: "19,5°"
                   text_color: 0x2EA8FF
                   text_align: RIGHT
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
               - label:
                   id: schema_rij_3_waarde
                   x: -22
@@ -1193,7 +1194,7 @@ lvgl:
                   align: RIGHT_MID
                   text: "Aan"
                   text_color: 0x0C0D10
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
                   bg_color: 0x2EA8FF
                   bg_opa: 100%
                   radius: 16
@@ -1206,16 +1207,16 @@ lvgl:
         - obj:
             id: schema_rij_4
             x: 0
-            y: 68
+            y: 67
             width: 340
-            height: 64
+            height: 58
             align: CENTER
             bg_color: 0x23262F
             bg_opa: 0%
             border_width: 2
             border_color: 0x2EA8FF
             border_opa: 0%
-            radius: 32
+            radius: 29
             opa: 60%
             pad_all: 0
             scrollbar_mode: "OFF"
@@ -1227,12 +1228,12 @@ lvgl:
                   align: LEFT_MID
                   text: "Di"
                   text_color: 0xE8EAF0
-                  text_font: quicksand_28b
+                  text_font: quicksand_28
               - bar:
                   id: schema_rij_4_bar
                   x: 74
                   y: 0
-                  width: 100
+                  width: 80
                   height: 12
                   align: LEFT_MID
                   mode: RANGE
@@ -1248,24 +1249,24 @@ lvgl:
                     radius: 0
               - label:
                   id: schema_rij_4_dagtemp
-                  x: -92
+                  x: -100
                   y: 0
-                  width: 62
+                  width: 74
                   align: RIGHT_MID
                   text: "20,5°"
                   text_color: 0xFF4D7E
                   text_align: RIGHT
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
               - label:
                   id: schema_rij_4_nachttemp
                   x: -22
                   y: 0
-                  width: 62
+                  width: 74
                   align: RIGHT_MID
                   text: "19,5°"
                   text_color: 0x2EA8FF
                   text_align: RIGHT
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
               - label:
                   id: schema_rij_4_waarde
                   x: -22
@@ -1273,7 +1274,7 @@ lvgl:
                   align: RIGHT_MID
                   text: "Aan"
                   text_color: 0x0C0D10
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
                   bg_color: 0x2EA8FF
                   bg_opa: 100%
                   radius: 16
@@ -1286,16 +1287,16 @@ lvgl:
         - obj:
             id: schema_rij_5
             x: 0
-            y: 136
-            width: 270
-            height: 64
+            y: 129
+            width: 290
+            height: 58
             align: CENTER
             bg_color: 0x23262F
             bg_opa: 0%
             border_width: 2
             border_color: 0x2EA8FF
             border_opa: 0%
-            radius: 32
+            radius: 29
             opa: 30%
             pad_all: 0
             scrollbar_mode: "OFF"
@@ -1307,7 +1308,7 @@ lvgl:
                   align: LEFT_MID
                   text: "Wo"
                   text_color: 0xE8EAF0
-                  text_font: quicksand_28b
+                  text_font: quicksand_28
               - bar:
                   id: schema_rij_5_bar
                   x: 74
@@ -1328,24 +1329,24 @@ lvgl:
                     radius: 0
               - label:
                   id: schema_rij_5_dagtemp
-                  x: -92
+                  x: -100
                   y: 0
-                  width: 62
+                  width: 74
                   align: RIGHT_MID
                   text: "20,5°"
                   text_color: 0xFF4D7E
                   text_align: RIGHT
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
               - label:
                   id: schema_rij_5_nachttemp
                   x: -22
                   y: 0
-                  width: 62
+                  width: 74
                   align: RIGHT_MID
                   text: "19,5°"
                   text_color: 0x2EA8FF
                   text_align: RIGHT
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
               - label:
                   id: schema_rij_5_waarde
                   x: -22
@@ -1353,7 +1354,7 @@ lvgl:
                   align: RIGHT_MID
                   text: "Aan"
                   text_color: 0x0C0D10
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
                   bg_color: 0x2EA8FF
                   bg_opa: 100%
                   radius: 16
@@ -1546,31 +1547,32 @@ lvgl:
             radius: 999
             pad_all: 0
             scrollbar_mode: "OFF"
-
-        - label:
-            id: inst_title
-            x: 0
-            y: 38
-            width: 300
-            align: TOP_MID
-            text: "INSTELLINGEN"
-            text_color: 0x8E94A3
-            text_align: CENTER
-            text_font: quicksand_24
+            widgets:
+              - label:
+                  id: inst_title
+                  x: 0
+                  y: 25
+                  width: 260
+                  height: 45
+                  align: TOP_MID
+                  text: "INSTELLINGEN"
+                  text_color: 0x30333B
+                  text_align: CENTER
+                  text_font: quicksand_30
 
         - obj:
             id: inst_rij_1
             x: 0
-            y: -136
-            width: 270
-            height: 64
+            y: -119
+            width: 290
+            height: 58
             align: CENTER
             bg_color: 0x23262F
             bg_opa: 0%
             border_width: 2
             border_color: 0x2EA8FF
             border_opa: 0%
-            radius: 32
+            radius: 29
             opa: 30%
             pad_all: 0
             scrollbar_mode: "OFF"
@@ -1583,7 +1585,7 @@ lvgl:
                   align: LEFT_MID
                   text: ""
                   text_color: 0xE8EAF0
-                  text_font: quicksand_28b
+                  text_font: quicksand_28
               - label:
                   id: inst_rij_1_waarde
                   x: -6
@@ -1591,7 +1593,7 @@ lvgl:
                   align: RIGHT_MID
                   text: ""
                   text_color: 0xE8EAF0
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
                   bg_color: 0x2EA8FF
                   bg_opa: 0%
                   radius: 16
@@ -1603,16 +1605,16 @@ lvgl:
         - obj:
             id: inst_rij_2
             x: 0
-            y: -68
+            y: -57
             width: 340
-            height: 64
+            height: 58
             align: CENTER
             bg_color: 0x23262F
             bg_opa: 0%
             border_width: 2
             border_color: 0x2EA8FF
             border_opa: 0%
-            radius: 32
+            radius: 29
             opa: 60%
             pad_all: 0
             scrollbar_mode: "OFF"
@@ -1625,7 +1627,7 @@ lvgl:
                   align: LEFT_MID
                   text: ""
                   text_color: 0xE8EAF0
-                  text_font: quicksand_28b
+                  text_font: quicksand_28
               - label:
                   id: inst_rij_2_waarde
                   x: -6
@@ -1633,7 +1635,7 @@ lvgl:
                   align: RIGHT_MID
                   text: ""
                   text_color: 0xE8EAF0
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
                   bg_color: 0x2EA8FF
                   bg_opa: 0%
                   radius: 16
@@ -1645,14 +1647,14 @@ lvgl:
         - obj:
             id: inst_rij_3
             x: 0
-            y: 0
+            y: 5
             width: 372
-            height: 64
+            height: 58
             align: CENTER
             bg_color: 0x23262F
             border_width: 2
             border_color: 0x2EA8FF
-            radius: 32
+            radius: 29
             opa: 100%
             pad_all: 0
             scrollbar_mode: "OFF"
@@ -1664,7 +1666,7 @@ lvgl:
                   align: LEFT_MID
                   text: "Ledring"
                   text_color: 0xE8EAF0
-                  text_font: quicksand_28b
+                  text_font: quicksand_28
               - label:
                   id: inst_rij_3_waarde
                   x: -6
@@ -1672,7 +1674,7 @@ lvgl:
                   align: RIGHT_MID
                   text: "Aan"
                   text_color: 0xE8EAF0
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
                   bg_color: 0x2EA8FF
                   bg_opa: 0%
                   radius: 16
@@ -1684,16 +1686,16 @@ lvgl:
         - obj:
             id: inst_rij_4
             x: 0
-            y: 68
+            y: 67
             width: 340
-            height: 64
+            height: 58
             align: CENTER
             bg_color: 0x23262F
             bg_opa: 0%
             border_width: 2
             border_color: 0x2EA8FF
             border_opa: 0%
-            radius: 32
+            radius: 29
             opa: 60%
             pad_all: 0
             scrollbar_mode: "OFF"
@@ -1705,7 +1707,7 @@ lvgl:
                   align: LEFT_MID
                   text: "Helderheid"
                   text_color: 0xE8EAF0
-                  text_font: quicksand_28b
+                  text_font: quicksand_28
               - label:
                   id: inst_rij_4_waarde
                   x: -6
@@ -1713,7 +1715,7 @@ lvgl:
                   align: RIGHT_MID
                   text: "40%"
                   text_color: 0xE8EAF0
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
                   bg_color: 0x2EA8FF
                   bg_opa: 0%
                   radius: 16
@@ -1725,16 +1727,16 @@ lvgl:
         - obj:
             id: inst_rij_5
             x: 0
-            y: 136
-            width: 270
-            height: 64
+            y: 129
+            width: 290
+            height: 58
             align: CENTER
             bg_color: 0x23262F
             bg_opa: 0%
             border_width: 2
             border_color: 0x2EA8FF
             border_opa: 0%
-            radius: 32
+            radius: 29
             opa: 30%
             pad_all: 0
             scrollbar_mode: "OFF"
@@ -1746,7 +1748,7 @@ lvgl:
                   align: LEFT_MID
                   text: "Thema"
                   text_color: 0xE8EAF0
-                  text_font: quicksand_28b
+                  text_font: quicksand_28
               - label:
                   id: inst_rij_5_waarde
                   x: -6
@@ -1754,7 +1756,7 @@ lvgl:
                   align: RIGHT_MID
                   text: "Paars"
                   text_color: 0xE8EAF0
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
                   bg_color: 0x2EA8FF
                   bg_opa: 0%
                   radius: 16
@@ -1821,66 +1823,95 @@ lvgl:
             radius: 999
             pad_all: 0
             scrollbar_mode: "OFF"
-
-        - label:
-            id: update_title
-            x: 0
-            y: 38
-            width: 300
-            align: TOP_MID
-            text: "SOFTWARE-UPDATE"
-            text_color: 0x8E94A3
-            text_align: CENTER
-            text_font: quicksand_24
+            widgets:
+              - label:
+                  id: update_title
+                  x: 0
+                  y: 25
+                  width: 260
+                  height: 45
+                  align: TOP_MID
+                  text: "UPDATE"
+                  text_color: 0x30333B
+                  text_align: CENTER
+                  text_font: quicksand_30
 
         - label:
             id: update_label_huidig
-            x: 0
-            y: -122
-            width: 300
+            x: -50
+            y: -112
+            width: 180
+            height: 40
             align: CENTER
             text: "Geïnstalleerd"
-            text_color: 0x8E94A3
-            text_align: CENTER
-            text_font: quicksand_16
+            text_color: 0xFFFFFF
+            text_align: LEFT
+            text_font: quicksand_28
 
         - label:
             id: update_huidig
-            x: 0
-            y: -94
-            width: 320
+            x: 85
+            y: -112
+            width: 110
+            height: 40
             align: CENTER
             text: "--"
-            text_color: 0xE8EAF0
-            text_align: CENTER
-            text_font: quicksand_24
+            text_color: 0xFFFFFF
+            text_align: RIGHT
+            text_font: quicksand_28b
+
+        - line:
+            id: update_line_huidig
+            x: 0
+            y: -93
+            width: 280
+            height: 2
+            align: CENTER
+            points:
+              - 0, 0
+              - 280, 0
+            line_color: 0x30333B
 
         - label:
             id: update_label_nieuw
-            x: 0
-            y: -56
-            width: 300
+            x: -50
+            y: -72
+            width: 180
+            height: 40
             align: CENTER
             text: "Beschikbaar"
-            text_color: 0x8E94A3
-            text_align: CENTER
-            text_font: quicksand_16
+            text_color: 0xFFFFFF
+            text_align: LEFT
+            text_font: quicksand_28
 
         - label:
             id: update_nieuw
-            x: 0
-            y: -28
-            width: 320
+            x: 85
+            y: -72
+            width: 110
+            height: 40
             align: CENTER
             text: "--"
-            text_color: 0xE8EAF0
-            text_align: CENTER
-            text_font: quicksand_24
+            text_color: 0xFFFFFF
+            text_align: RIGHT
+            text_font: quicksand_28b
+
+        - line:
+            id: update_line_nieuw
+            x: 0
+            y: -53
+            width: 280
+            height: 2
+            align: CENTER
+            points:
+              - 0, 0
+              - 280, 0
+            line_color: 0x30333B
 
         - label:
             id: update_status
             x: 0
-            y: 18
+            y: -20
             width: 300
             align: CENTER
             text: ""
@@ -1891,7 +1922,7 @@ lvgl:
         - obj:
             id: update_knop
             x: 0
-            y: 72
+            y: 50
             width: 300
             height: 56
             align: CENTER
@@ -1909,12 +1940,12 @@ lvgl:
                   align: CENTER
                   text: "Zoek naar update"
                   text_color: 0xE8EAF0
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
 
         - obj:
             id: update_terug
             x: 0
-            y: 132
+            y: 112
             width: 220
             height: 56
             align: CENTER
@@ -1934,7 +1965,7 @@ lvgl:
                   align: CENTER
                   text: "Terug"
                   text_color: 0xE8EAF0
-                  text_font: quicksand_24
+                  text_font: quicksand_28b
 
         - label:
             id: update_hint
