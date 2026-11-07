@@ -76,8 +76,10 @@ api_key: "..."        # 32 bytes base64, bijvoorbeeld: openssl rand -base64 32
 ap_password: "..."    # wachtwoord van de fallback-hotspot
 ```
 
-De sleutel voor ESP-NOW is de substitution `thermostat_link_key` in `openamber-thermostat.yaml`
-(standaard `openamber-thermostat-link`, gelijk aan de standaard in OpenAmber).
+Een sleutel voor ESP-NOW hoort niet in `secrets.yaml`: die wordt afgeleid uit de koppelcode (zie Koppelen). De basis
+daarvoor is de substitution `thermostat_link_key` in `openamber-thermostat.yaml` (standaard `openamber-thermostat-link`,
+gelijk aan de standaard in OpenAmber); die is openbaar en hoeft niet geheim te blijven. Een oude regel `espnow_key` in
+`secrets.yaml` wordt niet meer gebruikt en mag weg.
 
 ## Hoe de communicatie werkt
 
@@ -118,7 +120,7 @@ Belangrijk bij de configuratie:
    `climate_controller` uit en zet de waarden in gewone sensoren (`slo`, `shi`, `mode`). Na een commando van de
    thermostaat gebeurt dat meteen.
 2. **Commando's van de thermostaat naar OpenAmber** in één getal (volgnummer, modus, setpoints). Zie hieronder.
-3. **Koppelen** met een code die uit het MAC-adres komt. Zie hieronder.
+3. **Koppelen** met een koppelcode van OpenAmber, met daarnaast de MAC-code van OpenAmber. Zie hieronder.
 4. **Foutcodes** (`e1`, `e2`): OpenAmber stuurt elke fout- en waarschuwingsvlag als één bit; de thermostaat maakt er de lijst met actieve codes van.
 5. **Tijd** (`tm`): OpenAmber stuurt de tijd mee, zodat het schema ook werkt als de thermostaat geen internet heeft.
 6. **Verbindings- en condenscontrole** op de thermostaat zelf.
@@ -132,13 +134,16 @@ draait ESP-NOW niet.
 
 - **Op de thermostaat**: Menu → Koppelen (of vanzelf na het opstarten als er nog geen code is). Draai om een cijfer te
   kiezen, druk voor het volgende cijfer. Na het zesde cijfer zoekt de thermostaat de OpenAmber met die code; binnen 30 s
-  verschijnt "Gekoppeld met OpenAmber …". Dat kan even duren, want OpenAmber stuurt zijn code om de paar seconden.
+  verschijnt "Gekoppeld met OpenAmber …". Dat kan even duren, want OpenAmber stuurt zijn waarden elke 15 s opnieuw.
 - **Sleutel**: beide kanten leiden de ESP-NOW-sleutel af uit de code: SHA-256 van `thermostat_link_key` + ":" + code.
   Zonder de juiste code kan een apparaat niets lezen of versturen. De vaste `thermostat_link_key` is alleen de basis
   (en de sleutel zolang er nog geen code is), zodat er nooit onversleuteld verkeer is.
-- **Eerste wint**: de thermostaat legt de eerste OpenAmber die hij met die code hoort vast (`pair_code`, de laatste 6
-  tekens van het MAC-adres van OpenAmber). OpenAmber neemt alleen commando's en BME-waarden aan van de thermostaat die
-  zijn MAC-code terugstuurt (`thermostat_pin_ok`).
+- **MAC-code, eerste wint**: naast de koppelcode stuurt OpenAmber zijn **MAC-code** mee (`pin`: de laatste 6 tekens van
+  zijn MAC-adres). Dat is iets anders dan de koppelcode: de koppelcode maakt de sleutel, de MAC-code zegt welke OpenAmber
+  het is. De thermostaat legt de eerste OpenAmber die hij met de juiste koppelcode hoort vast (`pair_code`) en gebruikt
+  daarna alleen diens waarden. Hij stuurt die MAC-code terug, en OpenAmber neemt alleen commando's en BME-waarden aan van
+  de thermostaat die zijn eigen MAC-code terugstuurt (`thermostat_pin_ok`). Het is een extra controle bovenop de sleutel,
+  voor het zeldzame geval dat twee OpenAmbers dezelfde koppelcode hebben.
 - **Nieuwe code**: met "Nieuw" op OpenAmber (twee keer tikken: "Zeker?") of de knop "Thermostaat nieuwe koppelcode".
   De thermostaat moet daarna opnieuw gekoppeld worden.
 
@@ -165,7 +170,8 @@ waarde = ((volgnummer * 4 + modus) * 100 + laag * 2) * 100 + hoog * 2
 OpenAmber pakt dat uit en voert het uit. Daarbij gelden deze regels:
 
 - **Zelfde volgnummer als de vorige keer**: negeren. Een herhaald pakket wordt zo niet twee keer uitgevoerd.
-- **Andere thermostaat** (koppelcode klopt niet): negeren.
+- **Andere thermostaat** (stuurt niet de MAC-code van deze OpenAmber terug): negeren. Een thermostaat met een andere
+  koppelcode komt niet eens door de versleuteling.
 - **Setpoint**: net als op het scherm van OpenAmber wordt alleen het setpoint van de actieve modus gezet:
   bij koelen het hoge (`hoog`), anders het lage (`laag`). Alleen tussen 5 en 35 graden.
 - De thermostaat wacht 600 ms na de laatste klik voordat hij verstuurt, zodat snel draaien niet vele commando's geeft.
@@ -183,7 +189,7 @@ Van OpenAmber naar de thermostaat:
 
 | Naam | Betekenis |
 |---|---|
-| `pin` | koppelcode (laatste 6 tekens MAC) |
+| `pin` | MAC-code van OpenAmber (laatste 6 hex-tekens van het MAC-adres) |
 | `tw` | tapwatertemperatuur |
 | `tws` | doeltemperatuur tapwater |
 | `tc`, `tuo`, `tui` | cv-aanvoer (Tc), aanvoer (Tuo), retour (Tui) |
@@ -207,7 +213,7 @@ Van de thermostaat naar OpenAmber:
 
 | Naam | Betekenis |
 |---|---|
-| `pin` | koppelcode (de gekozen OpenAmber) |
+| `pin` | MAC-code van de gekoppelde OpenAmber, terug als bevestiging |
 | `bt`, `bh`, `dp` | temperatuur, luchtvochtigheid en dauwpunt van de BME680 op de thermostaat |
 | `cmd` | commando (zie hierboven) |
 
@@ -336,7 +342,8 @@ kamer (gemeten door de BME680) komt. De uitkomst staat in de globale `condens_wa
 - **Eerst `factory`, dan `ota`**: zie Flashen.
 - **Namen kloppen niet**: bij "Unknown key"-meldingen eerst controleren of de provider-naam gelijk is aan de `esphome: name:`
   van het andere apparaat, en of `rolling_code_enable` aan beide kanten gelijk staat.
-- **Geen data na het flashen**: controleer of de koppelcode klopt (opnieuw koppelen) en of beide kanten dezelfde `thermostat_link_key` hebben.
+- **Geen data na het flashen**: staat de schakelaar "Draadloze thermostaat" op OpenAmber aan? Klopt de koppelcode (opnieuw
+  koppelen)? Hebben beide kanten dezelfde `thermostat_link_key`?
   Draait OpenAmber wel de nieuwe firmware? Bij een crash tijdens het opstarten gaat OpenAmber vanzelf terug naar de vorige versie.
 - **Het pad in `packages:`** is relatief aan de map van het hoofdbestand. "No such file or directory" betekent bijna altijd
   een verkeerd pad of een verkeerde bestandsnaam.

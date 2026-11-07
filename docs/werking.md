@@ -11,9 +11,9 @@ Hoe de thermostaat en OpenAmber met elkaar praten, en welk bestand wat doet. De 
 |---|---|
 | `src/openamber/thermostat_link/thermostat_link.yaml` | het pakket met alles van de koppeling (hieronder "het pakket") |
 | `src/openamber-waveshare-display.yaml` | neemt het pakket op (één regel) |
-| `src/openamber/ui/settings/page_settings_tab_thermostat.yaml` | Thermostaat → Algemeen in twee pagina's; pagina 2 heeft de rij "Koppelcode draadloze thermostaat" |
+| `src/openamber/ui/settings/page_settings_tab_thermostat.yaml` | Thermostaat → Algemeen in twee pagina's; pagina 2 heeft de rijen "Draadloze thermostaat" (schakelaar) en "Koppelcode draadloze thermostaat" |
 | `src/openamber/ui/page_settings.yaml` | de paginabalk ‹ Pagina 1 / 2 › van dat tabblad (`thermostat_algemeen_pager`) |
-| `src/openamber/ui/bindings/script_ui_bindings.yaml` | pagina wisselen (`thermostat_algemeen_select_page`), "Zeker?" bij Nieuw (`thermostat_link_new_code_confirm`) en een leeg script `thermostat_link_new_code_ui` |
+| `src/openamber/ui/bindings/script_ui_bindings.yaml` | pagina wisselen (`thermostat_algemeen_select_page`), "Zeker?" bij Nieuw (`thermostat_link_new_code_confirm`) en de lege scripts `thermostat_link_toggle_ui` en `thermostat_link_new_code_ui` |
 
 **Thermostaat** (deze repo)
 
@@ -45,8 +45,11 @@ Welke waarden er over en weer gaan, staat in de README onder "Overzicht van alle
 ## Opstarten
 
 **OpenAmber**: de koppeling staat standaard uit. ESP-NOW start uitgeschakeld (`enable_on_boot: false`) en gaat pas aan
-met de schakelaar "Draadloze thermostaat" (`thermostat_link_enabled`), bij het opstarten of zodra je hem aanzet. Met de
-schakelaar aan doet `thermostat_link_apply_code`:
+met de schakelaar "Draadloze thermostaat" (`thermostat_link_enabled`), bij het opstarten (`on_boot`) of zodra je hem
+aanzet. De schakelaar op het scherm roept `thermostat_link_toggle_ui` aan, dat het pakket uitbreidt met het omzetten van
+de schakelaar. Uitzetten zet ESP-NOW uit, `thermostat_pin_ok` op onwaar en de BME680-waarden op "onbekend". De triggers
+van de schakelaar doen pas iets als ESP-NOW is opgestart: bij het terugzetten van de bewaarde stand tijdens het opstarten
+zou ESP-NOW anders crashen. Met de schakelaar aan doet `thermostat_link_apply_code`:
 1. Is er nog geen koppelcode (`thermostat_link_code` is 0), dan maakt hij een willekeurige code van 6 cijfers
    (100000-999999, met `random_bytes`).
 2. Hij berekent de sleutel: SHA-256 van `thermostat_link_key` + ":" + de code, en zet die als eigen sleutel en als
@@ -70,8 +73,9 @@ dan vanzelf de koppelpagina.
 1. Op de thermostaat voer je de code in op de koppelpagina (`show_pair`, `pair_druk`): de roller kiest een cijfer, een
    druk legt het vast. Een code die met 0 begint, kan niet en wordt gewist.
 2. Na het zesde cijfer bewaart de thermostaat de code (`link_code`), maakt `pair_code` leeg en zet de nieuwe sleutel.
-3. Elk pakket van OpenAmber bevat `pin`: de laatste 6 hex-tekens van het MAC-adres van OpenAmber. Alleen een OpenAmber
-   met dezelfde code komt door de versleuteling heen.
+3. Elk pakket van OpenAmber bevat `pin`, de **MAC-code**: de laatste 6 hex-tekens van het MAC-adres van OpenAmber. Dat
+   is niet de koppelcode; de koppelcode maakt de sleutel, de MAC-code zegt welke OpenAmber het is. Alleen een OpenAmber
+   met dezelfde koppelcode komt door de versleuteling heen.
 4. **Eerste wint**: het eerste pakket dat binnenkomt, legt die MAC-code vast in `pair_code` (`remote_pin`). Daarna
    gebruikt de thermostaat alleen waarden met precies die `pin` (`pin_ok`), dus ook bij twee OpenAmbers met dezelfde code.
 5. De koppelpagina (`pair_refresh`, elke 2 s) toont "Verbinden met …", dan "Gekoppeld met OpenAmber 1A2B3C", of na
@@ -81,7 +85,7 @@ dan vanzelf de koppelpagina.
 
 ## Waarden van OpenAmber naar de thermostaat
 
-- Temperaturen, statussen en de foutcode gaan als gewone sensoren en binary sensors over.
+- Temperaturen en statussen gaan als gewone sensoren en binary sensors over.
 - **Setpoints en modus**: `thermostat_link_target_low`, `_target_high` en `_mode` lezen de climate elke 5 s uit. De
   modus gaat over als ESPHome-getal (`climate::ClimateMode`: 0 uit, 2 koelen, 3 verwarmen).
 - **Foutcodes** (`thermostat_link_errors_1` en `_2`, kanalen `e1` en `e2`): elke fout- en waarschuwingsvlag van
