@@ -34,7 +34,7 @@ Beide kanten gebruiken het ESPHome-onderdeel `packet_transport` over ESP-NOW:
   ESP-NOW gebruikt het WiFi-kanaal, dus beide apparaten moeten op hetzelfde kanaal zitten.
 - **Namen**: elke waarde gaat over onder een korte naam (`broadcast_id`, bijvoorbeeld `tw`), en de ontvanger vraagt die
   naam op bij een bepaald apparaat (`provider` + `remote_id`). Het apparaat herkent de afzender aan zijn
-  `esphome: name:` (`openamber` en `openamber-thermostaat`).
+  `esphome: name:` (`openamber` en `openamber-thermostat`).
 - **Versleuteld**: elk pakket is versleuteld met dezelfde sleutel aan beide kanten (zie Koppelen).
 - **Wanneer**: een waarde wordt verstuurd zodra hij verandert, en daarnaast elke 15 s opnieuw.
 - **Alleen getallen en aan/uit-waarden**. Een climate (modus plus setpoints) kan niet over, daarom leest het pakket de
@@ -44,14 +44,19 @@ Welke waarden er over en weer gaan, staat in de README onder "Overzicht van alle
 
 ## Opstarten
 
-**OpenAmber** (`thermostat_link_apply_code`, bij het opstarten):
+**OpenAmber**: de koppeling staat standaard uit. ESP-NOW start uitgeschakeld (`enable_on_boot: false`) en gaat pas aan
+met de schakelaar "Draadloze thermostaat" (`thermostat_link_enabled`), bij het opstarten of zodra je hem aanzet. Met de
+schakelaar aan doet `thermostat_link_apply_code`:
 1. Is er nog geen koppelcode (`thermostat_link_code` is 0), dan maakt hij een willekeurige code van 6 cijfers
    (100000-999999, met `random_bytes`).
 2. Hij berekent de sleutel: SHA-256 van `thermostat_link_key` + ":" + de code, en zet die als eigen sleutel en als
    sleutel voor de thermostaat (`set_encryption_key`, `set_provider_encryption`).
-3. Hij toont de code in de tekstsensor "Thermostaat koppelcode" en op het scherm (`thermostat_link_code_ui` maakt de rij
-   zichtbaar en vult de waarde in).
+3. Hij toont de code in de tekstsensor "Thermostaat koppelcode" en op het scherm (`thermostat_link_ui`: de rij met de
+   schakelaar is altijd zichtbaar, de rij met de code alleen met de schakelaar aan).
 4. Na 2 s schrijft hij de instellingen naar flash, zodat een nieuwe code niet verloren gaat bij een crash.
+
+Bij het opstarten schrijven beide kanten ook meteen de teller van de rolling code naar flash (zie Commando's).
+De entiteiten van de koppeling staan in Home Assistant standaard uit (`disabled_by_default`).
 
 Tot stap 2 geldt de vaste `thermostat_link_key` als sleutel. Zo wordt er nooit onversleuteld verstuurd of ontvangen;
 `packet_transport` zou zonder sleutel ook onversleutelde pakketten aannemen.
@@ -77,9 +82,11 @@ dan vanzelf de koppelpagina.
 ## Waarden van OpenAmber naar de thermostaat
 
 - Temperaturen, statussen en de foutcode gaan als gewone sensoren en binary sensors over.
-- **Setpoints en modus**: `thermostat_link_target_low`, `_target_high` en `_mode` lezen de climate elke 5 s uit.
-- **Foutcode** (`thermostat_link_error_code`): de eerste actieve fout, anders de eerste waarschuwing, als getal
-  (1xx = P, 2xx = F, 3xx = E, 4xx = overig, 0 = niets). De thermostaat zet dat om in de tekst van OpenAmber.
+- **Setpoints en modus**: `thermostat_link_target_low`, `_target_high` en `_mode` lezen de climate elke 5 s uit. De
+  modus gaat over als ESPHome-getal (`climate::ClimateMode`: 0 uit, 2 koelen, 3 verwarmen).
+- **Foutcodes** (`thermostat_link_errors_1` en `_2`, kanalen `e1` en `e2`): elke fout- en waarschuwingsvlag van
+  OpenAmber is één bit. De thermostaat maakt er een lijst met actieve codes van (`fout_bijwerken`, `fout_codes`), in
+  volgorde van belang; de statusregel toont de eerste, de pagina Foutcodes alle. De bitvolgorde staat in de README.
 - **Tijd** (`thermostat_link_time`): minuten sinds maandag 00:00, voor het schema van de thermostaat.
 - Op de thermostaat filtert elke ontvangen sensor op `pin_ok`; zonder koppeling worden de waarden "onbekend".
   `last_rx` houdt bij wanneer het laatste pakket kwam: na 60 s zonder pakket toont de thermostaat "Geen verbinding".
@@ -90,6 +97,8 @@ dan vanzelf de koppelpagina.
    verstuurt dan één getal (`cmd`):
    `((volgnummer * 4 + modus) * 100 + laag * 2) * 100 + hoog * 2`, met modus 3 = "ongewijzigd laten".
 2. Het volgnummer loopt van 1 tot 99 en blijft bewaard na een herstart (`cmd_seq`).
+   Daarnaast heeft elk pakket de teller van de rolling code: OpenAmber weigert een pakket met een oudere teller, zodat
+   een opgevangen commando niet opnieuw kan worden uitgezonden.
 3. OpenAmber pakt het getal uit (`thermostat_rx_cmd`):
    - alleen als `thermostat_pin_ok` waar is;
    - een volgnummer dat gelijk is aan het vorige (`thermostat_last_cmd_seq`) wordt genegeerd, want het pakket wordt
@@ -112,6 +121,7 @@ dan vanzelf de koppelpagina.
 ## Beperkingen
 
 - Een code van 6 cijfers is met wat rekenwerk te raden uit opgevangen pakketten.
-- Een opgevangen commando kan opnieuw worden uitgezonden zolang de code niet verandert. De ingebouwde bescherming
-  (`ping_pong_enable`) legde in een test de verbinding plat en staat uit.
+- Herstart OpenAmber, dan neemt hij het eerste pakket van de thermostaat aan zonder de teller te kunnen vergelijken
+  (de laatst geziene teller staat alleen in het geheugen). Een opgevangen pakket werkt dus hoogstens één keer, direct
+  na een herstart.
 - Een OpenAmber waarvan het MAC-adres eindigt op 00:00:00 kan niet koppelen (0 betekent "nog geen code").

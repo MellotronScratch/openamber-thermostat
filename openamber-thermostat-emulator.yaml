@@ -17,7 +17,7 @@ packages:
   weg: !include thermostat/emulator_weg.yaml
 
 esphome:
-  name: openamber-thermostaat-emulator    # eigen naam: een eigen bouwmap, los van de echte thermostaat
+  name: openamber-thermostat-emulator    # eigen naam: een eigen bouwmap, los van de echte thermostaat
   friendly_name: OpenAmber Thermostaat (emulator)
 
 host:
@@ -115,7 +115,8 @@ sensor:
 # Nagebootste OpenAmber: zet elke 5 s voorbeeldwaarden in de sensors die anders via packet_transport binnenkomen.
 # Eerst de koppelcode, zodat pin_ok en de verbinding aan gaan; daarna komen de andere waarden door hun filter.
 # Setpoints en modus worden niet nagebootst, zodat wat je met de knop instelt blijft staan.
-# Een fout of waarschuwing zien? Zet ec op bijvoorbeeld 214 (F14) en err of warn op true.
+# Een fout of waarschuwing zien? Zet een bit in e1 of e2 (zie fout_bijwerken), bijvoorbeeld e1 = 1 << 15 (F14),
+# en err of warn op true.
 interval:
   - interval: 5s
     then:
@@ -131,7 +132,8 @@ interval:
           id(room_temperature).publish_state(20.8);
           id(rx_wsp).publish_state(35.0);
           id(rx_cf).publish_state(42.0);
-          id(rx_ec).publish_state(0);
+          id(rx_e1).publish_state(0);              // geen fouten of waarschuwingen
+          id(rx_e2).publish_state(0);
           // Statussen
           id(remote_err).publish_state(false);
           id(remote_warn).publish_state(false);

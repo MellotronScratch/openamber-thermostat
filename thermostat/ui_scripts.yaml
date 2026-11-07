@@ -231,7 +231,7 @@ script:
           };
 
           // Waarschuwing: geen verbinding gaat voor fout, fout voor waarschuwing, dan condens
-          int ec = std::isnan(id(rx_ec).state) ? 0 : (int) lroundf(id(rx_ec).state);
+          int ec = id(fout_codes).empty() ? 0 : id(fout_codes)[0];   // de belangrijkste actieve code
           std::string tekst;
           uint32_t k = 0xFF5100;
           bool melding = true;
@@ -460,6 +460,9 @@ script:
       - globals.set:
           id: knob_context
           value: '6'
+      - globals.set:
+          id: fout_sel
+          value: '0'
       - script.execute: fout_render
       - lvgl.page.show: fout_canvas
 
@@ -839,20 +842,21 @@ script:
             {106, "P06", "Storing compressor - laag drukverschil", true},
             {107, "P07", "Compressor voorverwarming", true},
             {111, "P11", "Compressor frequentiebegrenzing op buitentemperatuur", true},
-            {112, "P12", "Compressor frequentiebegrenzing op buitentemperatuur", true},
             {113, "P13", "Storing compressor - laag drukverschil", true},
             {407, "Waarschuwing", "Communicatie-failsafe binnenunit", true},
             {408, "Waarschuwing", "EEPROM-fout binnenunit", true},
             {409, "Waarschuwing", "Pompterugmelding P0 alarm", true},
           };
-          float x = id(rx_ec).state;
+          const auto &codes = id(fout_codes);
+          int n = (int) codes.size();
+          if (id(fout_sel) >= n) id(fout_sel) = 0;
           const char *icoon, *code, *tekst;
           uint32_t k;
-          char buf[16];
-          if (!id(link_ok) || std::isnan(x)) {
+          char buf[24];
+          if (!id(link_ok) || std::isnan(id(rx_e1).state)) {
             icoon = "\U000F0338"; k = 0x6B7080; code = "Geen verbinding"; tekst = "met OpenAmber";
           } else {
-            int c = (int) lroundf(x);
+            int c = n > 0 ? codes[id(fout_sel)] : 0;
             if (c == 0) {
               icoon = "\U000F05E0"; k = 0x2ECC71; code = "Geen foutcodes"; tekst = "";
             } else {
@@ -869,10 +873,36 @@ script:
               }
             }
           }
+          // Meer dan één actieve code: "P05 (1/3)", draaien bladert erdoorheen
+          std::string regel = code;
+          if (n > 1 && id(link_ok)) regel += str_sprintf(" (%d/%d)", id(fout_sel) + 1, n);
           lv_label_set_text(id(fout_icon), icoon);
           lv_obj_set_style_text_color(id(fout_icon), lv_color_hex(k), 0);
-          lv_label_set_text(id(fout_code), code);
+          lv_label_set_text(id(fout_code), regel.c_str());
           lv_label_set_text(id(fout_tekst), tekst);
+          lv_label_set_text(id(fout_hint), n > 1 ? "draai: volgende • druk: terug" : "druk: terug");
+
+  # Actieve codes uit de bits van OpenAmber (e1 bit 0-23, e2 bit 0-20). De volgorde is die van
+  # thermostat_link_errors_1/_2 op OpenAmber en meteen de volgorde van belang: fouten, dan waarschuwingen.
+  - id: fout_bijwerken
+    then:
+      - lambda: |-
+          static const int codes1[24] = {103, 105, 108, 109, 110, 201, 202, 203, 204, 205, 206, 207,
+                                         209, 210, 213, 214, 215, 216, 217, 218, 221, 222, 301, 302};
+          static const int codes2[21] = {303, 304, 305, 306, 307, 308, 401, 402, 403, 404, 405, 406,
+                                         101, 102, 106, 107, 111, 113, 407, 408, 409};
+          float e1 = id(rx_e1).state, e2 = id(rx_e2).state;
+          uint32_t b1 = std::isnan(e1) ? 0 : (uint32_t) lroundf(e1);
+          uint32_t b2 = std::isnan(e2) ? 0 : (uint32_t) lroundf(e2);
+          std::vector<int> nieuw;
+          for (int i = 0; i < 24; i++) if (b1 & (1u << i)) nieuw.push_back(codes1[i]);
+          for (int i = 0; i < 21; i++) if (b2 & (1u << i)) nieuw.push_back(codes2[i]);
+          id(fout_codes) = nieuw;
+      - if:
+          condition:
+            lambda: 'return id(knob_context) == 6;'
+          then:
+            - script.execute: fout_render
 
   # ---------------------------------------------------------------------
   # Instellingen-pagina: carrousel zoals het schema (vijf rijen, de geselecteerde in rij 3) met
@@ -1091,6 +1121,16 @@ script:
                 if (sel < 0) sel = 0;
                 if (sel > n - 1) sel = n - 1;
                 lv_roller_set_selected(r, sel, LV_ANIM_ON);
+
+      # 6 = Foutcodes: door de actieve codes bladeren
+      - if:
+          condition:
+            lambda: 'return id(knob_context) == 6 && id(fout_codes).size() > 1;'
+          then:
+            - lambda: |-
+                int n = (int) id(fout_codes).size();
+                id(fout_sel) = ((id(fout_sel) + delta) % n + n) % n;
+            - script.execute: fout_render
 
       # 4 = Overzicht: alleen lezen, draaien doet niets
 

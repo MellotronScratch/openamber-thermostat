@@ -29,7 +29,8 @@ hergebruikt. Een afgerond item wordt doorgestreept en blijft staan.
 - **B13** IRAM staat op 100%: een nieuw component dat IRAM wil, kan het compileren laten mislukken.
 - **B14** Pakketgrootte van ESP-NOW: tot nu toe geen fouten gezien in de logs van OpenAmber; blijven letten op meldingen
   over te grote pakketten.
-- **B15** Foutcodes: nu alleen de eerste actieve code (`ec`). Alle codes kan later met twee bitmasker-kanalen vanuit OpenAmber.
+- ~~**B15** Foutcodes: nu alleen de eerste actieve code (`ec`). Alle codes kan later met twee bitmasker-kanalen vanuit OpenAmber.~~
+  Klaar: OpenAmber stuurt de vlaggen als bits (`e1`, `e2`); de pagina Foutcodes toont alle actieve codes.
 - **B16** Het effect "Vat" wordt niet meer gebruikt; eventueel opruimen (ook `vat_leeg`, `vat_doel_standaard` en `led_bodem`).
 - **B17** Ledring: het effect "Status" verstuurt de leds elke 40 ms (`schedule_show()` bij elke update, ook als de kleur
   gelijk blijft). Met de ring aan: glitches op het scherm en de thermostaat valt van de WiFi; met de ring uit 15 minuten
@@ -37,6 +38,8 @@ hergebruikt. Een afgerond item wordt doorgestreept en blijft staan.
   interval, daarna weer beschikbaar maken. Waarschijnlijk ook de oorzaak van B01.
   Let op: daarna viel de thermostaat ook met de ring uit nog een paar keer van de WiFi (niet bereikbaar voor OTA en ping).
   De ring is dus waarschijnlijk niet de enige oorzaak; nog uitzoeken (bijvoorbeeld een log over langere tijd).
+- **B19** Bij "Geen verbinding" blijven de waarden van OpenAmber (temperaturen, setpoint) staan met hun laatste waarde;
+  liever leeg tonen ("--") zolang er geen verbinding is.
 
 ## Software-update
 

@@ -69,6 +69,11 @@ globals:
   - id: pin_start                 # koppelpagina: tijdstip (ms) waarop de code is ingevoerd
     type: uint32_t
     initial_value: '0'
+  - id: fout_codes                # actieve fout- en waarschuwingscodes van OpenAmber (uit e1/e2), op volgorde van belang
+    type: std::vector<int>
+  - id: fout_sel                  # foutcodespagina: welke van de actieve codes getoond wordt
+    type: int
+    initial_value: '0'
   - id: user_is_adjusting         # true zolang er aan de knop wordt gedraaid
     type: bool
     initial_value: 'false'
@@ -92,7 +97,7 @@ globals:
 sha256:                           # sleutel afleiden uit de koppelcode
 
 esphome:
-  name: openamber-thermostaat
+  name: openamber-thermostat
   friendly_name: OpenAmber Thermostaat
   on_boot:
     - then:
@@ -107,6 +112,9 @@ esphome:
         - lambda: |-
             lv_obj_set_style_bg_opa(lv_layer_top(), LV_OPA_TRANSP, 0);
         - lvgl.page.show: climate_canvas           # Temperatuur is de startpagina
+        # De teller van de rolling code gaat bij elk opstarten omhoog; meteen naar flash schrijven,
+        # anders weigert OpenAmber na een snelle herstart onze pakketten als oud
+        - lambda: 'global_preferences->sync();'
         # Ledring aan of uit volgens de instellingen
         - script.execute: led_update
         # Statusicoontjes: kleur, symbool en zichtbaarheid volgen de status van OpenAmber
@@ -379,13 +387,29 @@ sensor:
       - lambda: 'if (id(pin_ok)) return x; return NAN;'
     internal: true
 
+  # Actieve fouten en waarschuwingen: één bit per code (bron op OpenAmber: thermostat_link_errors_1/_2).
+  # De volgorde van de bits staat in het script fout_bijwerken.
   - platform: packet_transport
     provider: openamber
-    id: rx_ec
-    remote_id: ec               # bron op OpenAmber: thermostat_link_error_code (1xx=P, 2xx=F, 3xx=E, 4xx=overig, 0=geen)
+    id: rx_e1
+    remote_id: e1
     filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
       - lambda: 'if (id(pin_ok)) return x; return NAN;'
     internal: true
+    on_value:
+      then:
+        - script.execute: fout_bijwerken
+
+  - platform: packet_transport
+    provider: openamber
+    id: rx_e2
+    remote_id: e2
+    filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
+      - lambda: 'if (id(pin_ok)) return x; return NAN;'
+    internal: true
+    on_value:
+      then:
+        - script.execute: fout_bijwerken
 
   - platform: packet_transport
     provider: openamber
@@ -507,7 +531,7 @@ sensor:
   - platform: packet_transport
     provider: openamber
     id: rx_mode
-    remote_id: mode               # bron: climate_controller, modus 0=uit 1=verwarmen 2=koelen (thermostat_link_mode)
+    remote_id: mode               # bron: climate_controller, modus als ESPHome-getal 0=uit 2=koelen 3=verwarmen (thermostat_link_mode)
     filters:                    # alleen waarden van de gekoppelde OpenAmber (zelfde koppelcode)
       - lambda: 'if (id(pin_ok)) return x; return NAN;'
     internal: false
@@ -515,8 +539,8 @@ sensor:
       then:
         - lambda: |-
             if (id(user_is_adjusting) || std::isnan(x)) return;
-            int m = (int) lroundf(x);
-            if (m == 1)      id(hp_mode).publish_state("Verwarmen");
+            int m = (int) lroundf(x);         // climate::ClimateMode
+            if (m == 3)      id(hp_mode).publish_state("Verwarmen");
             else if (m == 2) id(hp_mode).publish_state("Koelen");
             else             id(hp_mode).publish_state("Uit");
         - script.execute: update_status_icons
@@ -800,8 +824,9 @@ packet_transport:
     # Geen peer_address: de pakketten gaan als broadcast. De versleuteling zorgt dat alleen
     # een apparaat met dezelfde sleutel iets met de pakketten kan.
     encryption: ${thermostat_link_key}
-    # Rolling code staat uit (zie eerdere problemen rond herstarts).
-    # rolling_code_enable: true
+    # Rolling code: elk pakket krijgt een oplopende teller en OpenAmber weigert oudere pakketten,
+    # zodat opgevangen pakketten niet opnieuw kunnen worden uitgezonden (teller: zie on_boot).
+    rolling_code_enable: true
     providers:
       - name: openamber           # moet gelijk zijn aan "esphome: name:" van OpenAmber
         encryption: ${thermostat_link_key}   # nodig om de pakketten van OpenAmber te kunnen lezen

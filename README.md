@@ -64,7 +64,7 @@ Het bordbestand moet leveren:
 Het LVGL-ontwerp (`ui_designer.yaml`) is gemaakt voor 480×480 pixels. Heeft het nieuwe scherm een ander formaat, dan moet
 dat ontwerp opnieuw gemaakt worden.
 
-De naam in `esphome: name:` (`openamber-thermostaat`) staat in het generieke deel en moet voor alle borden gelijk blijven,
+De naam in `esphome: name:` (`openamber-thermostat`) staat in het generieke deel en moet voor alle borden gelijk blijven,
 omdat OpenAmber de thermostaat daaraan herkent.
 
 Benodigd in `secrets.yaml`:
@@ -101,8 +101,10 @@ Belangrijk bij de configuratie:
 - De bovenste `encryption` bij `packet_transport` geldt alleen voor het versturen. Elke `providers:`-regel heeft
   zijn eigen `encryption` nodig om te kunnen lezen.
 - De `name` van een provider moet gelijk zijn aan de `esphome: name:` van het andere apparaat
-  (`openamber-thermostaat` aan de OpenAmber-kant, `openamber` aan de thermostaatkant).
-- `rolling_code_enable` staat uit. Met rolling code lopen de tellers van beide kanten uit de pas na een herstart.
+  (`openamber-thermostat` aan de OpenAmber-kant, `openamber` aan de thermostaatkant).
+- `rolling_code_enable` staat aan beide kanten aan: elk pakket heeft een oplopende teller, oudere pakketten worden
+  geweigerd. De teller wordt bij het opstarten meteen naar flash geschreven, anders lopen de kanten na een snelle
+  herstart uit de pas.
 
 ## Wat standaard is en wat zelf gebouwd is
 
@@ -117,14 +119,16 @@ Belangrijk bij de configuratie:
    thermostaat gebeurt dat meteen.
 2. **Commando's van de thermostaat naar OpenAmber** in één getal (volgnummer, modus, setpoints). Zie hieronder.
 3. **Koppelen** met een code die uit het MAC-adres komt. Zie hieronder.
-4. **Foutcode** (`ec`): OpenAmber zet de eerste actieve fout of waarschuwing om in één getal.
+4. **Foutcodes** (`e1`, `e2`): OpenAmber stuurt elke fout- en waarschuwingsvlag als één bit; de thermostaat maakt er de lijst met actieve codes van.
 5. **Tijd** (`tm`): OpenAmber stuurt de tijd mee, zodat het schema ook werkt als de thermostaat geen internet heeft.
 6. **Verbindings- en condenscontrole** op de thermostaat zelf.
 
 ## Koppelen
 
-OpenAmber maakt bij het eerste opstarten een willekeurige **koppelcode van 6 cijfers**. Je vindt die op het scherm van
-OpenAmber onder Instellingen → Thermostaat → Algemeen (pagina 2) en op de webpagina als "Thermostaat koppelcode".
+Op OpenAmber staat de koppeling standaard uit. Zet onder Instellingen → Thermostaat → Algemeen (pagina 2) de schakelaar
+**Draadloze thermostaat** aan (of de entiteit met die naam). OpenAmber maakt dan een willekeurige **koppelcode van
+6 cijfers**; die staat onder de schakelaar en op de webpagina als "Thermostaat koppelcode". Met de schakelaar uit
+draait ESP-NOW niet.
 
 - **Op de thermostaat**: Menu → Koppelen (of vanzelf na het opstarten als er nog geen code is). Draai om een cijfer te
   kiezen, druk voor het volgende cijfer. Na het zesde cijfer zoekt de thermostaat de OpenAmber met die code; binnen 30 s
@@ -186,9 +190,9 @@ Van OpenAmber naar de thermostaat:
 | `ta` | buitentemperatuur |
 | `rt` | ruimtetemperatuur (Tr) |
 | `slo`, `shi` | laag (verwarmen) en hoog (koelen) setpoint |
-| `mode` | 0 uit, 1 verwarmen, 2 koelen |
+| `mode` | modus als ESPHome-getal: 0 uit, 2 koelen, 3 verwarmen |
 | `cf` | compressorfrequentie (Hz) |
-| `ec` | foutcode, zie hieronder |
+| `e1`, `e2` | actieve fouten en waarschuwingen, één bit per code (zie hieronder) |
 | `wsp` | huidig setpoint: gewenste aanvoertemperatuur (stooklijn, handmatig of koelen) |
 | `tm` | tijd: minuten sinds maandag 00:00 |
 | `err`, `warn` | fout actief, waarschuwing actief |
@@ -207,9 +211,11 @@ Van de thermostaat naar OpenAmber:
 | `bt`, `bh`, `dp` | temperatuur, luchtvochtigheid en dauwpunt van de BME680 op de thermostaat |
 | `cmd` | commando (zie hierboven) |
 
-**Foutcode `ec`**: 1xx is een P-code (P05 wordt 105), 2xx een F-code (F14 wordt 214), 3xx een E-code (E03 wordt 303),
-401 tot 406 de overige fouten (bijvoorbeeld modbus-timeout), 407 tot 409 de overige waarschuwingen, 0 betekent niets aan de hand.
-Eerst komt de eerste actieve fout, daarna de eerste waarschuwing.
+**Foutcodes `e1` en `e2`**: elke fout- of waarschuwingsvlag van OpenAmber is één bit; 24 bits passen precies in een
+waarde. `e1` bit 0-23: P03 P05 P08 P09 P10, F01-F07 F09 F10 F13-F18 F21 F22, E01 E02. `e2` bit 0-20: E03-E08, de
+OpenAmber-fouten 401-406 (pomp-, compressor- en klep-timeouts, modbus, failsafe binnendeel), de waarschuwingen
+P01 P02 P06 P07 P11 P13 en 407-409. Die volgorde is ook de volgorde van belang: de statusregel toont de eerste
+actieve code, de pagina Foutcodes alle (draaien bladert). De volgorde is het protocol: alleen achteraan toevoegen.
 
 ## Bediening en scherm
 
@@ -222,7 +228,7 @@ Eerst komt de eerste actieve fout, daarna de eerste waarschuwing.
 | Menu | carrousel met Temperatuur, Overzicht, Schema, Foutcodes, Modus, Koppelen en Instellingen |
 | Overzicht | temperaturen en statussen van OpenAmber (alleen lezen) |
 | Schema | per weekdag een dag- en nachttemperatuur met tijden; kopiëren naar alle dagen |
-| Foutcodes | de eerste actieve fout of waarschuwing van OpenAmber, met de tekst uit OpenAmber |
+| Foutcodes | alle actieve fouten en waarschuwingen van OpenAmber, met de tekst uit OpenAmber; draaien bladert erdoorheen |
 | Modus | Verwarmen, Koelen of Uit |
 | Koppelen | de koppelcode van OpenAmber invoeren |
 | Instellingen | Ledring en Helderheid (voorlopig niet beschikbaar), Thema, Sensor, Software-update |
@@ -329,7 +335,7 @@ kamer (gemeten door de BME680) komt. De uitkomst staat in de globale `condens_wa
 - **Ledring**: geeft glitches en WiFi-uitval, zie Ledring.
 - **Eerst `factory`, dan `ota`**: zie Flashen.
 - **Namen kloppen niet**: bij "Unknown key"-meldingen eerst controleren of de provider-naam gelijk is aan de `esphome: name:`
-  van het andere apparaat, en of `rolling_code_enable` uit staat.
+  van het andere apparaat, en of `rolling_code_enable` aan beide kanten gelijk staat.
 - **Geen data na het flashen**: controleer of de koppelcode klopt (opnieuw koppelen) en of beide kanten dezelfde `thermostat_link_key` hebben.
   Draait OpenAmber wel de nieuwe firmware? Bij een crash tijdens het opstarten gaat OpenAmber vanzelf terug naar de vorige versie.
 - **Het pad in `packages:`** is relatief aan de map van het hoofdbestand. "No such file or directory" betekent bijna altijd
