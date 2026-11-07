@@ -5,7 +5,7 @@
 #
 # Pagina's (knob_context):
 #   0 = Temperatuur  climate_canvas    setpoint instellen met de knop
-#   1 = Menu         carrousel_canvas  carrousel met loop (7 items, geselecteerde in het midden)
+#   1 = Menu         carrousel_canvas  carrousel met loop (8 items, geselecteerde in het midden)
 #   2 = Modus        modus_canvas      Verwarmen / Koelen / Uit kiezen
 #   3 = Koppelen     pair_canvas       koppelcode van OpenAmber invoeren
 #   4 = Overzicht    overzicht_canvas  alleen lezen: temperaturen en compressor
@@ -13,10 +13,11 @@
 #   6 = Foutcodes    fout_canvas       eerste actieve fout of waarschuwing met de tekst van OpenAmber
 #   7 = Instellingen inst_canvas       carrousel: ledring, helderheid, thema, sensor, software-update
 #   8 = Update       update_canvas     software-update vanaf GitHub (update-component firmware_update)
+#   9 = Info         info_canvas       alleen lezen: IP-adres, MAC-adres en WiFi-signaal
 #
 # Knop:  Temperatuur: korte druk = menu          Menu: korte druk = het gekozen item openen
 #        Modus: korte druk = bevestigen          Koppelen: korte druk = bevestigen
-#        Overzicht en Foutcodes: korte druk = terug naar menu
+#        Overzicht, Foutcodes en Info: korte druk = terug naar menu
 #        Instellingen: korte druk = wijzigen of klaar
 #        Schema: korte druk = openen of bewaren, lange druk = een stap terug (vanuit het overzicht naar het menu)
 #        Lange druk (elders) = terug naar Temperatuur
@@ -30,7 +31,7 @@ substitutions:
   pagina_terug_min: "5"           # minuten zonder bediening voordat het scherm terugkeert naar Temperatuur
 
 globals:
-  - id: menu_index                # welk menu-item staat in het midden (0..6)
+  - id: menu_index                # welk menu-item staat in het midden (0..7)
     type: int
     initial_value: '0'
   - id: modus_keuze               # keuze op de modus-pagina: 0 = Verwarmen, 1 = Koelen, 2 = Uit
@@ -127,6 +128,7 @@ esphome:
         - lvgl.widget.update: {id: fout_background, bg_grad: achtergrond_verloop, border_width: 0}
         - lvgl.widget.update: {id: inst_background, bg_grad: achtergrond_verloop, border_width: 0}
         - lvgl.widget.update: {id: update_background, bg_grad: achtergrond_verloop, border_width: 0}
+        - lvgl.widget.update: {id: info_background, bg_grad: achtergrond_verloop, border_width: 0}
         # Icoonfonts met alle glyphs die het script nodig heeft (zie ui_fonts.yaml)
         - lvgl.widget.update: {id: carrousel_menu_icon_1, text_font: menu_icons_28}
         - lvgl.widget.update: {id: carrousel_menu_icon_2, text_font: menu_icons_33}
@@ -173,6 +175,19 @@ script:
           bool lega  = twa && on(id(remote_lega));
           float cf   = id(rx_cf).state;                       // NaN zolang er niets is ontvangen
           bool draait = link && cf > 0.5f;
+
+          // Scherm wekken als er een status aan gaat: compressor, backupelement, verwarmen, koelen,
+          // tapwater of legionellarun. Niet bij het opstarten of als de verbinding net terug is.
+          {
+            uint8_t nu = ((cf > 0.5f) << 0) | (on(id(remote_bu)) << 1) | (on(id(remote_wv)) << 2) |
+                         (on(id(remote_cd)) << 3) | (bezig << 4) | (lega << 5);
+            static uint8_t vorig = 0;
+            static bool vorig_link = false;
+            if (link && vorig_link && (nu & ~vorig) && !id(backlight).remote_values.is_on())
+              id(scherm_status_wekken).execute();
+            vorig = nu;
+            vorig_link = link;
+          }
 
           // Backupelement (bliksem)
           toon(id(climate_icon_backupheater), link && on(id(remote_bu)));
@@ -355,20 +370,20 @@ script:
           lv_label_set_text(id(overzicht_label_compfreq_value), hz);
 
   # ---------------------------------------------------------------------
-  # Menu: carrousel met loop. Zeven items in vijf rijen, de geselecteerde staat in rij 3.
+  # Menu: carrousel met loop. Acht items in vijf rijen, de geselecteerde staat in rij 3.
   # De rijen schuiven niet echt: bij elke klik krijgen ze een andere tekst en icoon.
   # ---------------------------------------------------------------------
   - id: menu_render
     then:
       - lambda: |-
-          static const char *namen[7] = {"Temperatuur", "Overzicht", "Schema", "Foutcodes", "Modus", "Koppelen", "Instellingen"};
-          static const char *iconen[7] = {"\U000F0393", "\U000F0A1D", "\U000F00F0", "\U000F0026", "\U000F0493", "\U000F0337", "\U000F062E"};
+          static const char *namen[8] = {"Temperatuur", "Overzicht", "Schema", "Foutcodes", "Modus", "Koppelen", "Instellingen", "Info"};
+          static const char *iconen[8] = {"\U000F0393", "\U000F0A1D", "\U000F00F0", "\U000F0026", "\U000F0493", "\U000F0337", "\U000F062E", "\U000F02FD"};
           lv_obj_t *lbl[5] = {id(carrousel_menu_label_1), id(carrousel_menu_label_2), id(carrousel_menu_label_3),
                               id(carrousel_menu_label_4), id(carrousel_menu_label_5)};
           lv_obj_t *ico[5] = {id(carrousel_menu_icon_1), id(carrousel_menu_icon_2), id(carrousel_menu_icon_3),
                               id(carrousel_menu_icon_4), id(carrousel_menu_icon_5)};
           for (int r = 0; r < 5; r++) {
-            int k = ((id(menu_index) + r - 2) % 7 + 7) % 7;     // rij 3 (r = 2) is het gekozen item
+            int k = ((id(menu_index) + r - 2) % 8 + 8) % 8;     // rij 3 (r = 2) is het gekozen item
             lv_label_set_text(lbl[r], namen[k]);
             lv_label_set_text(ico[r], iconen[k]);
           }
@@ -385,6 +400,7 @@ script:
             case 4: id(show_modus).execute(); break;
             case 5: id(show_pair).execute(); break;
             case 6: id(show_inst).execute(); break;
+            case 7: id(show_info).execute(); break;
           }
 
   # ---------------------------------------------------------------------
@@ -511,6 +527,32 @@ script:
           lv_obj_add_flag(id(schema_toast), LV_OBJ_FLAG_HIDDEN);
       - script.execute: schema_render
       - lvgl.page.show: schema_canvas
+
+  - id: show_info
+    then:
+      - globals.set:
+          id: knob_context
+          value: '9'
+      - script.execute: info_render
+      - lvgl.page.show: info_canvas
+
+  # Info-pagina: IP-adres, MAC-adres en WiFi-signaal (ververst elke 2 s zolang de pagina open is)
+  - id: info_render
+    then:
+      - lambda: |-
+          std::string ip = "--", wifi = "Geen verbinding";
+          #ifdef USE_WIFI                            // de emulator heeft geen WiFi
+          if (wifi::global_wifi_component->is_connected()) {
+            for (auto &a : wifi::global_wifi_component->get_ip_addresses())
+              if (a.is_set() && a.is_ip4()) { char b[network::IP_ADDRESS_BUFFER_SIZE]; ip = a.str_to(b); break; }
+            int rssi = wifi::global_wifi_component->wifi_rssi();
+            const char *oordeel = rssi >= -55 ? "zeer goed" : rssi >= -67 ? "goed" : rssi >= -75 ? "matig" : "zwak";
+            wifi = str_sprintf("%d dBm (%s)", rssi, oordeel);
+          }
+          #endif
+          lv_label_set_text(id(info_ip), ip.c_str());
+          lv_label_set_text(id(info_mac), get_mac_address_pretty().c_str());
+          lv_label_set_text(id(info_wifi), wifi.c_str());
 
   # Na ${pagina_terug_min} minuten zonder bediening terug naar Temperatuur, met het menu op Temperatuur.
   # Het scherm zelf gaat eerder uit (60 s); de pagina blijft dan staan tot de timeout. Koppelen blijft
@@ -1059,9 +1101,9 @@ script:
           g->stops[0].color = lv_color_hex(van[t]);
           g->stops[1].color = lv_color_hex(naar[t]);
           id(accent_kleur) = accent[t];
-          lv_obj_t *bg[9] = {id(climate_background), id(carrousel_background), id(overzicht_background), id(modus_background),
-                             id(pair_background), id(schema_background), id(fout_background), id(inst_background),
-                             id(update_background)};
+          lv_obj_t *bg[10] = {id(climate_background), id(carrousel_background), id(overzicht_background), id(modus_background),
+                              id(pair_background), id(schema_background), id(fout_background), id(inst_background),
+                              id(update_background), id(info_background)};
           for (auto *o : bg) {
             lv_obj_set_style_bg_grad(o, g, 0);       // opnieuw zetten, zodat LVGL de nieuwe kleuren tekent
             lv_obj_invalidate(o);
@@ -1137,7 +1179,7 @@ script:
             lambda: 'return id(knob_context) == 1;'
           then:
             - lambda: |-
-                id(menu_index) = ((id(menu_index) + delta) % 7 + 7) % 7;
+                id(menu_index) = ((id(menu_index) + delta) % 8 + 8) % 8;
             - script.execute: menu_render
 
       # 2 = Modus: kiezen tussen Verwarmen, Koelen en Uit (draait rond); bevestigen met de korte druk
@@ -1199,3 +1241,12 @@ script:
             - script.execute:
                 id: schema_draai
                 delta: !lambda 'return delta;'
+
+interval:
+  - interval: 2s                  # Info-pagina verversen zolang hij open is
+    then:
+      - if:
+          condition:
+            lambda: 'return id(knob_context) == 9;'
+          then:
+            - script.execute: info_render

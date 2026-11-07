@@ -93,7 +93,7 @@ globals:
   - id: pending_mode              # modus voor het volgende commando; 3 = ongewijzigd laten
     type: int
     initial_value: '3'
-  - id: knob_context              # 0 = Temperatuur (setpoint instellen), 1 = menu, 2 = modus kiezen, 3 = koppelen, 4 = overzicht, 5 = schema, 6 = foutcodes, 7 = instellingen, 8 = update
+  - id: knob_context              # 0 = Temperatuur (setpoint instellen), 1 = menu, 2 = modus kiezen, 3 = koppelen, 4 = overzicht, 5 = schema, 6 = foutcodes, 7 = instellingen, 8 = update, 9 = info
     type: int
     initial_value: '0'
 
@@ -821,6 +821,24 @@ script:
       - light.turn_off:
           id: backlight
           transition_length: 1s
+
+  # Scherm kort aan (8 s) als er een status aan gaat (zie update_status_icons). Wordt er in die tijd
+  # bediend, dan neemt reset_backlight_timer het over en blijft het scherm de gewone 60 s aan.
+  - id: scherm_status_wekken
+    mode: restart
+    then:
+      - light.turn_on:
+          id: backlight
+          brightness: 100%
+      - delay: 8s
+      - if:
+          condition:
+            not:
+              script.is_running: reset_backlight_timer
+          then:
+            - light.turn_off:
+                id: backlight
+                transition_length: 1s
 
   # Ledring: aan met het effect "Status" of uit. Het effect bepaalt zelf wat er brandt:
   # scherm aan = kleur van de modus (ademt als de compressor draait), scherm uit = alleen

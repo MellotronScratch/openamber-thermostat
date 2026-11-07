@@ -20,6 +20,7 @@ font:
       "\U000F0493",  # Cog             (menu: Modus)
       "\U000F0337",  # Link            (menu: Koppelen)
       "\U000F062E",  # Tune            (menu: Instellingen)
+      "\U000F02FD",  # Information outline (menu: Info)
     ]
   - file:
       url: "https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/fonts/materialdesignicons-webfont.ttf"
@@ -34,6 +35,7 @@ font:
       "\U000F0493",  # Cog
       "\U000F0337",  # Link
       "\U000F062E",  # Tune
+      "\U000F02FD",  # Information outline
     ]
   # Rij 3 van de carrousel (geselecteerd). Dit font zet het script ook op climate_icon_heatcool,
   # dat vuur, sneeuwvlok, ontdooien of standby toont.
@@ -50,6 +52,7 @@ font:
       "\U000F0493",  # Cog
       "\U000F0337",  # Link
       "\U000F062E",  # Tune
+      "\U000F02FD",  # Information outline
       "\U000F0238",  # Fire (verwarmen)
       "\U000F0717",  # Snowflake (koelen)
       "\U000F12CB",  # Snowflake melt (ontdooien)

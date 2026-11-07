@@ -228,13 +228,14 @@ actieve code, de pagina Foutcodes alle (draaien bladert). De volgorde is het pro
 | Pagina | Wat je er doet |
 |---|---|
 | Temperatuur | setpoint instellen: bij koelen het hoge, anders het lage (10 tot 30 graden, stappen van 0,5); korte druk opent het menu |
-| Menu | carrousel met Temperatuur, Overzicht, Schema, Foutcodes, Modus, Koppelen en Instellingen |
+| Menu | carrousel met Temperatuur, Overzicht, Schema, Foutcodes, Modus, Koppelen, Instellingen en Info |
 | Overzicht | temperaturen en statussen van OpenAmber (alleen lezen) |
 | Schema | per weekdag een dag- en nachttemperatuur met tijden; kopiëren naar alle dagen |
 | Foutcodes | alle actieve fouten en waarschuwingen van OpenAmber, met de tekst uit OpenAmber; draaien bladert erdoorheen |
 | Modus | Verwarmen, Koelen of Uit |
 | Koppelen | de koppelcode van OpenAmber invoeren |
 | Instellingen | Ledring en Helderheid (voorlopig niet beschikbaar), Thema, Sensor, Software-update |
+| Info | IP-adres, MAC-adres en WiFi-signaal van de thermostaat (alleen lezen) |
 
 Zo zien de pagina's eruit (uit de emulator, met de voorbeeldwaarden van de nagebootste OpenAmber):
 
@@ -260,6 +261,8 @@ Zo zien de pagina's eruit (uit de emulator, met de voorbeeldwaarden van de nageb
 </table>
 
 - **Scherm**: gaat 60 seconden na de laatste bediening uit. De eerste druk of draai maakt het alleen wakker.
+  Het scherm gaat ook 8 seconden aan als de compressor, het backupelement, verwarmen, koelen, tapwater of een
+  legionellarun aan gaat (niet bij het opstarten of als de verbinding net terug is).
 - **Pagina-geheugen**: zonder bediening blijft de pagina staan; na 5 minuten gaat hij terug naar Temperatuur.
 - **Schema**: stuurt alleen het verwarmingssetpoint, en alleen in de modus Verwarmen.
 - **Sensor** (Instellingen): welke kamertemperatuur het scherm toont, Tr van OpenAmber of de eigen BME680.
