@@ -42,6 +42,64 @@ Beide kanten gebruiken het ESPHome-onderdeel `packet_transport` over ESP-NOW:
 
 Welke waarden er over en weer gaan, staat in de README onder "Overzicht van alle waarden".
 
+## Hoe een bericht eruitziet
+
+Een bericht is geen leesbare tekst maar een rij bytes. Alleen de kop (wie het stuurt) is leesbaar; de inhoud is
+versleuteld met de sleutel uit de koppelcode (XXTEA) en ziet er in de lucht uit als willekeurige bytes. Hieronder staat
+een bericht zoals het eruitziet vóór het versleutelen (opbouw volgens `packet_transport` in ESPHome).
+
+**Van de thermostaat naar OpenAmber** (68 bytes):
+
+```
+--- kop, niet versleuteld ---
+53 45                           vast herkenningsteken ("ES" = ESPHome)
+14                              lengte van de naam: 20 tekens
+6f 70 65 6e 61 6d 62 65 72 2d   "openamber-"
+74 68 65 72 6d 6f 73 74 61 74   "thermostat"  (de afzender, esphome: name:)
+00                              opvulling tot een veelvoud van 4 bytes
+
+--- inhoud, versleuteld ---
+01                              begin van de gegevens
+02 23 c1 2b 4b 03 70 69 6e      sensor 11256099 (= hex ABC123)  "pin"  MAC-code van de gekoppelde OpenAmber
+02 66 66 aa 41 02 62 74         sensor 21,3                     "bt"   temperatuur BME680
+02 00 00 40 42 02 62 68         sensor 48,0                     "bh"   luchtvochtigheid
+02 00 00 20 41 02 64 70         sensor 10,0                     "dp"   dauwpunt
+02 80 21 51 48 03 63 6d 64      sensor 214150                   "cmd"  commando
+00                              opvulling tot een veelvoud van 4 bytes
+```
+
+**Van OpenAmber naar de thermostaat** (een deel; het echte bericht bevat alle waarden):
+
+```
+53 45 09 6f 70 65 6e 61 6d 62 65 72      kop: naam "openamber" (9 tekens)
+01                                       begin van de gegevens
+02 23 c1 2b 4b 03 70 69 6e               sensor 11256099 (= hex ABC123)  "pin"  eigen MAC-code
+02 00 00 42 42 02 74 77                  sensor 48,5                     "tw"   tapwater
+02 00 00 28 42 02 63 66                  sensor 42,0                     "cf"   compressor (Hz)
+03 00 03 65 72 72                        aan/uit: uit                    "err"  geen fout
+03 01 02 77 76                           aan/uit: aan                    "wv"   warmtevraag
+```
+
+Elke waarde bestaat uit:
+
+| Deel | Lengte | Betekenis |
+|---|---|---|
+| soort | 1 byte | `02` = sensor (getal), `03` = aan/uit-waarde |
+| waarde | 4 bytes of 1 byte | sensor: kommagetal (float), minst significante byte eerst; aan/uit: `00` of `01` |
+| lengte naam | 1 byte | aantal tekens van de naam |
+| naam | zoveel bytes | de naam (`broadcast_id`), bijvoorbeeld `tw` |
+
+Het commando 214150 pakt OpenAmber uit volgens de formule in de README (Commando's van thermostaat naar OpenAmber):
+volgnummer 5, modus 1 (verwarmen), laag 41 / 2 = 20,5°, hoog 50 / 2 = 25°.
+
+Wat je hieruit kunt halen:
+
+- **Korte namen** (`tw`, `cf`): elke naam gaat in elk bericht mee, dus korte namen houden het bericht klein.
+- **Alleen getallen**: er is geen soort voor tekst, daarom gaat de MAC-code als getal over. Een float is precies tot
+  24 bits, genoeg voor 6 hex-tekens. De koppelcode zelf gaat nooit over: die zit alleen in de sleutel.
+- **Grootte**: past niet alles in één ESP-NOW-bericht, dan begint `packet_transport` zelf een volgend bericht
+  (met dezelfde kop). Een te groot bericht hoort dus niet voor te komen.
+
 ## Opstarten
 
 **OpenAmber**: de koppeling staat standaard uit. ESP-NOW start uitgeschakeld (`enable_on_boot: false`) en gaat pas aan

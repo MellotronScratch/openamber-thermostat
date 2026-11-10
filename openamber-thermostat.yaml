@@ -734,7 +734,7 @@ script:
     then:
       - lambda: |-
           switch (id(knob_context)) {
-            case 0: id(show_menu).execute(); break;     // menu_index blijft staan: het laatst gekozen item
+            case 0: id(show_menu).execute(); break;     // het menu opent op het laatst geopende item
             case 1: id(menu_open).execute(); break;
             case 2: id(modus_apply).execute(); break;
             case 3: id(pair_druk).execute(); break;

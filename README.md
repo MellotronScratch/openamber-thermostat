@@ -12,6 +12,7 @@ De koppeling aan de OpenAmber-kant staat in OpenAmber zelf
 
 1. [Bestanden](#bestanden)
    - [Een ander scherm of bord](#een-ander-scherm-of-bord)
+   - [Aansluitingen ZX2D10GE01R-V4848](#aansluitingen-zx2d10ge01r-v4848)
 2. [Hoe de communicatie werkt](#hoe-de-communicatie-werkt)
 3. [Wat standaard is en wat zelf gebouwd is](#wat-standaard-is-en-wat-zelf-gebouwd-is)
 4. [Koppelen](#koppelen)
@@ -77,6 +78,65 @@ Er is geen `secrets.yaml` nodig; er staat niets geheims in de firmware:
 - **ESP-NOW**: de sleutel wordt afgeleid uit de koppelcode (zie Koppelen). De basis daarvoor is de substitution
   `thermostat_link_key` in `openamber-thermostat.yaml` (standaard `openamber-thermostat-link`, gelijk aan de standaard
   in OpenAmber); die is openbaar.
+
+### Aansluitingen ZX2D10GE01R-V4848
+
+Bron: tabel 2 en het schema in de datasheet van het scherm. De ledring (GPIO4), de draaiknop (GPIO5/6), de drukknop
+(GPIO3) en de backlight (GPIO38) zitten op het schermbord zelf en komen niet op een connector.
+
+**CN2** (EXT_CONN, 2×10 BTB op het schermbord)
+
+| Pin | Naam | ESP32-S3 | Gebruik |
+|---|---|---|---|
+| 1 | ESP_TXD | TXD0 (GPIO43) | serieel downloaden en log |
+| 2 | EXT_IO4 | GPIO1 | I2C SCL, BME680 |
+| 3 | ESP_RXD | RXD0 (GPIO44) | serieel downloaden en log |
+| 4 | EXT_IO3 | GPIO2 | I2C SDA, BME680 |
+| 5 | EN | EN | reset |
+| 6 | EXT_IO2 | GPIO20 (USB D+) | vrij |
+| 7 | BOOT | GPIO0 | opstartmodus (ook RGB_D2 van het scherm) |
+| 8 | EXT_IO1 | GPIO19 (USB D−) | vrij |
+| 9–12 | GND | | massa |
+| 13, 14 | USB_DP | GPIO20 | USB |
+| 15, 16 | USB_DN | GPIO19 | USB |
+| 17, 19 | TP_SCL, TP_SDA | | niet verbonden (R9 en R14 niet geplaatst) |
+| 18, 20 | +5V | | voeding |
+
+EXT_IO1 en EXT_IO2 zijn dezelfde pinnen als USB D− en D+: gebruik je ze als IO, dan werkt USB via de connector niet meer.
+
+**J1** (7 polig, downloaden en voeding)
+
+| J1 | Naam | CN2 |
+|---|---|---|
+| 1 | 5V0 | 18, 20 |
+| 2 | 3V3 | niet op CN2 |
+| 3 | RXD | 3 |
+| 4 | TXD | 1 |
+| 5 | EN | 5 |
+| 6 | BOOT | 7 |
+| 7 | GND | 9–12 |
+
+**J2** (IO)
+
+| J2 | Naam | ESP32-S3 | CN2 | Gebruik |
+|---|---|---|---|---|
+| 1 | GND | | 9–12 | massa |
+| 2 | IO1 | GPIO1 (EXT_IO4) | 2 | I2C SCL, BME680 |
+| 3 | IO2 | GPIO2 (EXT_IO3) | 4 | I2C SDA, BME680 |
+| 4 | IO20 | GPIO20 (EXT_IO2) | 6 | vrij (USB D+) |
+| 5 | IO19 | GPIO19 (EXT_IO1) | 8 | vrij (USB D−) |
+
+**J3** (4 polig)
+
+| J3 | Naam | ESP32-S3 | CN2 | Gebruik |
+|---|---|---|---|---|
+| 1 | +5V | | 18, 20 | voeding |
+| 2 | GND | | 11 | massa |
+| 3 | TP_SCL | | 17 | niet verbonden |
+| 4 | TP_SDA | | 19 | niet verbonden |
+
+J3 is bedoeld als I2C-aansluiting (bijvoorbeeld voor touch), maar pin 3 en 4 zijn op het schermbord niet met de ESP32
+verbonden (R9 en R14 niet geplaatst). In deze uitvoering levert J3 alleen 5V en GND; de BME680 hoort op J2.
 
 ## Hoe de communicatie werkt
 
@@ -264,6 +324,8 @@ Zo zien de pagina's eruit (uit de emulator, met de voorbeeldwaarden van de nageb
   Het scherm gaat ook 8 seconden aan als de compressor, het backupelement, verwarmen, koelen, tapwater of een
   legionellarun aan gaat (niet bij het opstarten of als de verbinding net terug is).
 - **Pagina-geheugen**: zonder bediening blijft de pagina staan; na 5 minuten gaat hij terug naar Temperatuur.
+- **Menu**: opent met Overzicht in het midden. Heb je binnen 5 minuten een ander item geopend, dan staat dat item
+  in het midden.
 - **Schema**: stuurt alleen het verwarmingssetpoint, en alleen in de modus Verwarmen.
 - **Sensor** (Instellingen): welke kamertemperatuur het scherm toont, Tr van OpenAmber of de eigen BME680.
   OpenAmber regelt altijd op Tr.
@@ -376,9 +438,12 @@ kamer (gemeten door de BME680) komt. De uitkomst staat in de globale `condens_wa
 
 ## Bekende problemen en valkuilen
 
-- **Zwart of grijs scherm na ESPHome 2026.10.1.** Op die versie bleef het scherm leeg (ook met het oorspronkelijke bestand),
-  terwijl 2026.9.1 het goed deed. De oorzaak is niet gevonden; er is geen melding in de changelog over `mipi_rgb`.
-  Bouw het project daarom met 2026.9.1, of test een nieuwere versie eerst met een minimaal bestand dat alleen een kleurvlak toont.
+- **Zwart scherm met ESPHome 2026.10.x.** Met 2026.10.1 en 2026.10.2 blijft het scherm zwart (de backlight brandt wel);
+  2026.9.1 werkt. Oorzaak: dit scherm krijgt zijn instelcommando's via SPI op GPIO47 en GPIO41, dezelfde pinnen die daarna
+  datalijnen van het beeld zijn. Sinds 2026.10 start `mipi_rgb` eerst het beeld en stuurt daarna de instelcommando's, die
+  dan niet meer bij het scherm aankomen. Gemeld in [esphome#21785](https://github.com/esphome/esphome/issues/21785) en
+  opgelost in [esphome#21588](https://github.com/esphome/esphome/pull/21588), dat in 2026.11.0 zit. Bouw het project tot
+  die tijd met 2026.9.1 (zie B24 in de backlog).
 - **Ledring**: geeft glitches en WiFi-uitval, zie Ledring.
 - **Eerst `factory`, dan `ota`**: zie Flashen.
 - **Namen kloppen niet**: bij "Unknown key"-meldingen eerst controleren of de provider-naam gelijk is aan de `esphome: name:`

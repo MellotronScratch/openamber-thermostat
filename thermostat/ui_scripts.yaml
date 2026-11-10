@@ -23,9 +23,9 @@
 #        Lange druk (elders) = terug naar Temperatuur
 #        Zonder bediening blijft de pagina staan, ook als het scherm uit is: een druk op de knop
 #        brengt je terug op de laatste pagina. Na ${pagina_terug_min} minuten zonder bediening gaat
-#        het scherm terug naar Temperatuur en staat het menu weer op Temperatuur.
+#        het scherm terug naar Temperatuur en staat het menu weer op Overzicht.
 #        (Koppelen blijft open zolang er nog geen OpenAmber is gekozen.)
-#        Het menu opent met het laatst gekozen item in het midden.
+#        Het menu opent met het laatst geopende item in het midden (standaard Overzicht).
 # =====================================================================
 substitutions:
   pagina_terug_min: "5"           # minuten zonder bediening voordat het scherm terugkeert naar Temperatuur
@@ -33,7 +33,10 @@ substitutions:
 globals:
   - id: menu_index                # welk menu-item staat in het midden (0..7)
     type: int
-    initial_value: '0'
+    initial_value: '1'
+  - id: menu_gekozen              # het laatst geopende menu-item; het menu opent hiermee in het midden (1 = Overzicht)
+    type: int
+    initial_value: '1'
   - id: modus_keuze               # keuze op de modus-pagina: 0 = Verwarmen, 1 = Koelen, 2 = Uit
     type: int
     initial_value: '0'
@@ -392,6 +395,7 @@ script:
   - id: menu_open
     then:
       - lambda: |-
+          id(menu_gekozen) = id(menu_index);       // de volgende keer opent het menu op dit item
           switch (id(menu_index)) {
             case 0: id(show_home).execute(); break;
             case 1: id(show_overzicht).execute(); break;
@@ -445,6 +449,7 @@ script:
       - globals.set:
           id: knob_context
           value: '1'
+      - lambda: 'id(menu_index) = id(menu_gekozen);'   # het laatst geopende item in het midden
       - script.execute: menu_render
       - lvgl.page.show: carrousel_canvas
 
@@ -554,7 +559,7 @@ script:
           lv_label_set_text(id(info_mac), get_mac_address_pretty().c_str());
           lv_label_set_text(id(info_wifi), wifi.c_str());
 
-  # Na ${pagina_terug_min} minuten zonder bediening terug naar Temperatuur, met het menu op Temperatuur.
+  # Na ${pagina_terug_min} minuten zonder bediening terug naar Temperatuur, met het menu op Overzicht.
   # Het scherm zelf gaat eerder uit (60 s); de pagina blijft dan staan tot de timeout. Koppelen blijft
   # open zolang er nog geen koppelcode is ingevoerd.
   - id: page_timeout
@@ -562,7 +567,7 @@ script:
     then:
       - delay: ${pagina_terug_min}min
       - lambda: |-
-          id(menu_index) = 0;
+          id(menu_gekozen) = 1;                   // menu opent weer op Overzicht
           bool geen_code = id(link_code) == 0;
           if (id(knob_context) != 0 && !(id(knob_context) == 3 && geen_code)) id(show_home).execute();
 

@@ -18,8 +18,8 @@ hergebruikt. Een afgerond item wordt doorgestreept en blijft staan.
 - **B22** Instelling "Groot in beeld": doeltemperatuur of kamertemperatuur groot in het midden (de andere klein eronder).
   Idee: bij draaien tijdelijk de doeltemperatuur groot, na een paar seconden terug; bij de kleine temperatuur "Doel" of
   "Kamer" zetten. De ring blijft de doeltemperatuur tonen.
-- **B23** Nieuw menu-item "Informatie", in elk geval met een QR-code naar de repository (README). Welke informatie er
-  verder op komt, nog bedenken.
+- **B23** QR-code naar de repository (README) op het scherm. De pagina Info bestaat inmiddels (IP-adres, MAC-adres,
+  WiFi-signaal), maar zonder QR-code. Waar de QR-code komt, nog bedenken (bijvoorbeeld op Info of op Software-update).
 
 ## Designer
 
@@ -46,6 +46,10 @@ hergebruikt. Een afgerond item wordt doorgestreept en blijft staan.
 - **B21** De thermostaat valt geregeld van het netwerk (geen ping, geen OTA, niet via mDNS) en komt pas terug na
   stroomloos maken. Ook gezien bij OTA-uploads die halverwege afbreken. Mogelijk dezelfde oorzaak als B17; uitzoeken met
   een log over langere tijd (bijvoorbeeld via USB).
+- **B24** Overstappen van ESPHome 2026.9.1 naar 2026.11.0 zodra die uit is. 2026.10.x geeft een zwart scherm
+  ([esphome#21785](https://github.com/esphome/esphome/issues/21785), opgelost in 2026.11.0). Eerst via USB testen, met de
+  vorige firmware bij de hand om terug te gaan. Daarna ook de release-workflow en de vermelding van 2026.9.1 in de
+  README en CLAUDE.md bijwerken.
 - **B19** Bij "Geen verbinding" blijven de waarden van OpenAmber (temperaturen, setpoint) staan met hun laatste waarde;
   liever leeg tonen ("--") zolang er geen verbinding is.
 
